@@ -1,0 +1,16 @@
+{
+  "date_recuperation": "2025-11-09T19:54:31.406511",
+  "nombre_saints": 2,
+  "saints_majeurs": [
+    {
+      "valeur": "Dédicace de la Basilique du Latran",
+      "resume": "Basilique saint Jean de Latran, à Rome",
+      "lien": "http://nominis.cef.fr:80/contenus/saint/174/D%C3%A9dicace-de-la-Basilique-du-Latran.html"
+    },
+    {
+      "valeur": "Saint Théodore",
+      "resume": "Soldat, martyr à Euchaïta, dans le Pont (+ v. 304)",
+      "lien": "http://nominis.cef.fr:80/contenus/saint/11/Saint-Th%C3%A9odore.html"
+    }
+  ]
+}

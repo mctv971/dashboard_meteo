@@ -1,0 +1,11 @@
+# Dashboard Streamlit pour données météo
+streamlit
+pandas
+requests
+geopy
+openmeteo-requests
+requests-cache
+retry-requests
+googletrans
+blagues-api
+asyncio

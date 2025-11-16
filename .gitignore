@@ -11,3 +11,5 @@ dist/
 downloads/
 eggs/
 .cache.sqlite
+
+.env

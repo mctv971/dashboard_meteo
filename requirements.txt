@@ -9,3 +9,12 @@ retry-requests
 googletrans
 blagues-api
 asyncio
+
+# Dépendances pour chatbot IA avec agent météo
+langchain
+langchain-groq
+langchain-core
+langchain-community
+langgraph
+python-dotenv
+streamlit-chat

@@ -1,17 +1,24 @@
 import streamlit as st
-import sys
-import os
 from datetime import datetime
 import pandas as pd
+import os
+import sys
 import altair as alt
 
-# Ajouter le répertoire courant au chemin Python pour importer requete_page1
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# S'assurer que le répertoire principal est importable
+root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(root_dir)
 
+# Import des fonctions (météo, saints, horoscope, blague)
 try:
-    from requete_page1 import get_weather_data, get_saints_data, get_horoscope_data, get_blague_data
+    from requete_page1 import (
+        get_weather_data,
+        get_saints_data,
+        get_horoscope_data,
+        get_blague_data
+    )
 except ImportError as e:
-    st.error(f"Erreur d'importation : {e}")
+    st.error(f"Erreur d'importation des fonctions : {e}")
     st.stop()
 
 # ---------- Styles ----------
@@ -215,9 +222,7 @@ def show_data_page():
 
     if "latitude" not in st.session_state or "longitude" not in st.session_state:
         st.error("❌ Aucune ville sélectionnée. Retournez à la page d'accueil.")
-        if st.button("🏠 Retour à l'accueil"):
-            st.session_state.page = "accueil"
-            st.rerun()
+        st.info("Veuillez retourner à la page d'accueil (menu à gauche) et choisir une ville.")
         return
 
     # Auto-récupération à l’ouverture / changement de ville
@@ -537,6 +542,5 @@ def show_data_page():
             - Lever/Coucher du soleil en **hh:mm**.
             """
         )
-
-if __name__ == "__main__":
-    show_data_page()
+# Appel direct
+show_data_page()

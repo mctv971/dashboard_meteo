@@ -32,6 +32,25 @@ st.markdown("""
 
 /* Titres dans les containers */
 .card-title{font-weight:700;font-size:1.05rem;margin-bottom:8px}
+/* Spoiler avec effet de flou */
+.spoiler-blur {
+    background-color: #f0f2f6;      /* Fond gris clair pour repérer la zone */
+    color: transparent;             /* Rend le texte transparent */
+    text-shadow: 0 0 10px rgba(0,0,0,0.7); /* Crée l'effet de flou par l'ombre */
+    border-radius: 5px;
+    padding: 10px;
+    cursor: pointer;                /* Affiche une petite main au survol */
+    transition: all 0.3s ease;
+    user-select: none;              /* Empêche de sélectionner le texte flou */
+}
+
+/* Quand on passe la souris dessus OU qu'on clique (active) */
+.spoiler-blur:hover, .spoiler-blur:active {
+    color: #262730;                 /* Couleur du texte normale */
+    text-shadow: none;              /* Enlève le flou */
+    background-color: #ffffff;      /* Fond blanc pour la lecture */
+    border: 1px solid #f0f2f6;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -518,8 +537,7 @@ def show_data_page():
                     q = blague_data.get("joke", "—")
                     a = blague_data.get("answer", "—")
                     st.markdown(f"**Question :** {q}")
-                    with st.popover("Voir la réponse"):
-                        st.markdown(f"**Réponse :** {a}")
+                    st.markdown(f'<div class="spoiler-blur"><strong>Réponse :</strong> {a}</div>', unsafe_allow_html=True)
                 else:
                     st.caption("— En attente d'actualisation —")
 

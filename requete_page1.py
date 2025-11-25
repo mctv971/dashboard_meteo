@@ -13,44 +13,38 @@ from blagues_api import BlagueType
 
 def get_weather_data(latitude, longitude):
     """
-    Récupère les données météorologiques pour une localisation donnée.
-    
-    Parameters:
-    latitude (float): Latitude de la localisation
-    longitude (float): Longitude de la localisation
-    
-    Returns:
-    dict: Dictionnaire contenant les données météorologiques avec les clés:
-          - current: données météo actuelles
-          - hourly: liste des données horaires
-          - daily: liste des données quotidiennes
+    Récupère les données météorologiques (inchangé + ajouts pour J+7).
     """
     # Setup the Open-Meteo API client with cache and retry on error
     cache_session = requests_cache.CachedSession('.cache', expire_after = 3600)
     retry_session = retry(cache_session, retries = 5, backoff_factor = 0.2)
     openmeteo = openmeteo_requests.Client(session = retry_session)
 
-    # Make sure all required weather variables are listed here
-    # The order of variables in hourly or daily is important to assign them correctly below
     url = "https://api.open-meteo.com/v1/forecast"
+    
     params = {
         "latitude": latitude,
         "longitude": longitude,
-        "daily": ["sunrise", "sunset", "daylight_duration", "sunshine_duration"],
+        "daily": [
+            "sunrise", "sunset", "daylight_duration", "sunshine_duration",
+            "temperature_2m_max", "temperature_2m_min", 
+            "precipitation_sum", "precipitation_probability_max", "weather_code",
+            "wind_speed_10m_max",
+            "uv_index_max",
+            "apparent_temperature_max"
+        ],
         "hourly": ["temperature_2m", "rain", "precipitation", "precipitation_probability", "apparent_temperature", "relative_humidity_2m", "wind_speed_10m", "wind_gusts_10m", "wind_direction_10m", "weather_code", "cloud_cover", "visibility", "showers", "snowfall", "uv_index", "uv_index_clear_sky", "is_day"],
         "current": ["wind_speed_10m", "wind_direction_10m", "wind_gusts_10m", "precipitation", "rain", "showers", "snowfall", "temperature_2m", "apparent_temperature", "relative_humidity_2m", "is_day", "weather_code", "cloud_cover", "pressure_msl", "surface_pressure"],
         "timezone": "auto",
     }
+    
     responses = openmeteo.weather_api(url, params=params)
+    # print(responses) # Optionnel
+    # print("\n✅ Requête effectuée avec succès")
 
-    print(responses)
-
-    print("\n✅ Requête effectuée avec succès")
-
-    # Process first location. Add a for-loop for multiple locations or weather models
     response = responses[0]
 
-    # Process current data. The order of variables needs to be the same as requested.
+    # --- CURRENT (STRICTEMENT INCHANGÉ) ---
     current = response.Current()
     current_wind_speed_10m = current.Variables(0).Value()
     current_wind_direction_10m = current.Variables(1).Value()
@@ -68,7 +62,6 @@ def get_weather_data(latitude, longitude):
     current_pressure_msl = current.Variables(13).Value()
     current_surface_pressure = current.Variables(14).Value()
 
-    # Save current data to JSON
     current_data = {
         "timestamp": str(current.Time()),
         "location": {
@@ -94,7 +87,7 @@ def get_weather_data(latitude, longitude):
         "surface_pressure": float(current_surface_pressure) if current_surface_pressure is not None else None
     }
 
-    # Process hourly data. The order of variables needs to be the same as requested.
+    # --- HOURLY (STRICTEMENT INCHANGÉ) ---
     hourly = response.Hourly()
     hourly_temperature_2m = hourly.Variables(0).ValuesAsNumpy()
     hourly_rain = hourly.Variables(1).ValuesAsNumpy()
@@ -140,22 +133,25 @@ def get_weather_data(latitude, longitude):
     hourly_data["is_day"] = hourly_is_day
 
     hourly_dataframe = pd.DataFrame(data = hourly_data)
-
-    # Convert numpy types to native Python types for JSON serialization
     hourly_dataframe_json = hourly_dataframe.copy()
     for col in hourly_dataframe_json.columns:
         if col != 'date':
             hourly_dataframe_json[col] = hourly_dataframe_json[col].astype(float)
-
-    # Convert DataFrame to list of dictionaries
     hourly_dict = hourly_dataframe_json.to_dict('records')
 
-    # Process daily data. The order of variables needs to be the same as requested.
+    # --- DAILY (MODIFIÉ AVEC PRÉCAUTION) ---
     daily = response.Daily()
+    
+    # 1. On garde vos variables existantes (Index 0 à 3)
     daily_sunrise = daily.Variables(0).ValuesInt64AsNumpy()
     daily_sunset = daily.Variables(1).ValuesInt64AsNumpy()
     daily_daylight_duration = daily.Variables(2).ValuesAsNumpy()
     daily_sunshine_duration = daily.Variables(3).ValuesAsNumpy()
+    daily_temp_max = daily.Variables(4).ValuesAsNumpy()
+    daily_temp_min = daily.Variables(5).ValuesAsNumpy()
+    daily_precip_sum = daily.Variables(6).ValuesAsNumpy()
+    daily_precip_prob = daily.Variables(7).ValuesAsNumpy()
+    daily_weather_code = daily.Variables(8).ValuesAsNumpy()
 
     daily_data = {"date": pd.date_range(
         start = pd.to_datetime(daily.Time(), unit = "s", utc = True),
@@ -164,25 +160,30 @@ def get_weather_data(latitude, longitude):
         inclusive = "left"
     )}
 
+    # On peuple le dictionnaire
     daily_data["sunrise"] = daily_sunrise
     daily_data["sunset"] = daily_sunset
     daily_data["daylight_duration"] = daily_daylight_duration
     daily_data["sunshine_duration"] = daily_sunshine_duration
+    daily_data["temperature_2m_max"] = daily_temp_max
+    daily_data["temperature_2m_min"] = daily_temp_min
+    daily_data["precipitation_sum"] = daily_precip_sum
+    daily_data["precipitation_probability_max"] = daily_precip_prob
+    daily_data["weather_code"] = daily_weather_code
+    daily_data["wind_speed_10m_max"] = daily.Variables(9).ValuesAsNumpy()
+    daily_data["uv_index_max"] = daily.Variables(10).ValuesAsNumpy()
+    daily_data["apparent_temperature_max"] = daily.Variables(11).ValuesAsNumpy()
 
     daily_dataframe = pd.DataFrame(data = daily_data)
 
-
-    # Convert numpy types to native Python types for JSON serialization
     daily_dataframe_json = daily_dataframe.copy()
     for col in daily_dataframe_json.columns:
         if col != 'date':
             if col in ['sunrise', 'sunset']:
-                # Convert timestamp to readable format
                 daily_dataframe_json[col] = pd.to_datetime(daily_dataframe_json[col], unit='s').dt.strftime('%Y-%m-%d %H:%M:%S')
             else:
                 daily_dataframe_json[col] = daily_dataframe_json[col].astype(float)
 
-    # Convert DataFrame to list of dictionaries
     daily_dict = daily_dataframe_json.to_dict('records')
     
     return {

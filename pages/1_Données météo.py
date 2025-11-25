@@ -32,24 +32,70 @@ st.markdown("""
 
 /* Titres dans les containers */
 .card-title{font-weight:700;font-size:1.05rem;margin-bottom:8px}
+
 /* Spoiler avec effet de flou */
 .spoiler-blur {
-    background-color: #f0f2f6;      /* Fond gris clair pour repérer la zone */
-    color: transparent;             /* Rend le texte transparent */
-    text-shadow: 0 0 10px rgba(0,0,0,0.7); /* Crée l'effet de flou par l'ombre */
+    /* Utilisation de la variable de fond secondaire pour s'adapter au Dark Mode */
+    background-color: var(--secondary-background-color); 
+    color: transparent;             
+    text-shadow: 0 0 10px rgba(128,128,128,0.7); /* Ombre grise neutre */
     border-radius: 5px;
     padding: 10px;
-    cursor: pointer;                /* Affiche une petite main au survol */
+    cursor: pointer;                
     transition: all 0.3s ease;
-    user-select: none;              /* Empêche de sélectionner le texte flou */
+    user-select: none;              
 }
 
 /* Quand on passe la souris dessus OU qu'on clique (active) */
 .spoiler-blur:hover, .spoiler-blur:active {
-    color: #262730;                 /* Couleur du texte normale */
-    text-shadow: none;              /* Enlève le flou */
-    background-color: #ffffff;      /* Fond blanc pour la lecture */
-    border: 1px solid #f0f2f6;
+    color: var(--text-color);       /* Couleur du texte du thème actuel */
+    text-shadow: none;              
+    background-color: var(--background-color);      
+    border: 1px solid var(--secondary-background-color);
+}
+
+/* --- ONGLETS (TABS) ADAPTATIFS DARK/LIGHT MODE --- */
+
+/* Espace entre les onglets */
+.stTabs [data-baseweb="tab-list"] {
+    gap: 8px;
+}
+
+/* Style par défaut d'un onglet (inactif) */
+.stTabs [data-baseweb="tab"] {
+    height: 50px;
+    white-space: pre-wrap;
+    border-radius: 8px;
+    padding: 0 20px;
+    font-weight: 500;
+    
+    /* Variable Streamlit : Gris clair en Light Mode, Gris foncé en Dark Mode */
+    background-color: var(--secondary-background-color); 
+    
+    /* Variable Streamlit : Noir en Light Mode, Blanc en Dark Mode */
+    color: var(--text-color); 
+    
+    border: 1px solid transparent; /* Bordure invisible par défaut */
+}
+
+/* Effet au survol d'un onglet inactif */
+.stTabs [data-baseweb="tab"]:hover {
+    background-color: rgba(150, 150, 150, 0.2); /* Légère surbrillance universelle */
+}
+
+/* Style de l'onglet SÉLECTIONNÉ (Actif) */
+.stTabs [aria-selected="true"] {
+    /* Devient la couleur de fond principale (Blanc pur ou Noir pur) */
+    background-color: var(--background-color);
+    
+    /* Bordure subtile qui s'adapte au thème */
+    border: 1px solid var(--secondary-background-color);
+    /* border-bottom: none; (Optionnel si on veut un effet "dossier ouvert") */
+    
+    font-weight: 700;
+    
+    /* Le texte prend la couleur "Primaire" (souvent rouge/orange par défaut dans Streamlit) */
+    color: var(--primary-color);
 }
 </style>
 """, unsafe_allow_html=True)
@@ -182,6 +228,49 @@ def _line_chart_temp_duo(df: pd.DataFrame, x_col: str, temp_col: str, felt_col: 
     )
     st.altair_chart(base + labels, use_container_width=True)
 
+def _chart_7days(df: pd.DataFrame):
+    if df.empty: return
+    
+    # Base commune
+    base = alt.Chart(df).encode(x=alt.X("Jour:N", sort=None, title=None))
+    
+    # Barre pour la pluie
+    bar = base.mark_bar(opacity=0.3, color="#4A90E2").encode(
+        y=alt.Y("Pluie (mm):Q", title="Précipitations (mm)"),
+        tooltip=["Jour", "Pluie (mm)", "Proba (%)"]
+    )
+    
+    # Lignes pour Temp Max et Min
+    line_max = base.mark_line(color="#E4572E", point=True).encode(
+        y=alt.Y("Max (°C):Q", title="Température (°C)"),
+        tooltip=["Jour", "Max (°C)"]
+    )
+    line_min = base.mark_line(color="#2E6BE4", point=True).encode(
+        y=alt.Y("Min (°C):Q"),
+        tooltip=["Jour", "Min (°C)"]
+    )
+    
+    # On combine le tout
+    chart = alt.layer(bar, line_max + line_min).resolve_scale(y='independent').properties(height=350)
+    st.altair_chart(chart, use_container_width=True)
+
+# --- Helper pour les emojis météo ---
+def _get_weather_emoji(code):
+    try:
+        c = int(code)
+    except:
+        return "🤷"
+        
+    if c == 0: return "☀️"             # Ciel dégagé
+    if c in [1, 2, 3]: return "⛅"     # Partiellement nuageux
+    if c in [45, 48]: return "🌫️"     # Brouillard
+    if c in [51, 53, 55]: return "🌦️" # Bruine
+    if c in [61, 63, 65]: return "🌧️" # Pluie
+    if c in [71, 73, 75]: return "❄️" # Neige
+    if c in [80, 81, 82]: return "🌦️" # Averses
+    if c in [95, 96, 99]: return "⛈️" # Orage
+    return "🤷"
+
 # --- Etat ---
 def _ensure_state():
     st.session_state.setdefault("signe_sel", "leo")
@@ -266,282 +355,375 @@ def show_data_page():
         if st.button("🔄 Actualiser maintenant", type="primary"):
             _fetch_all()
 
-    # Deux colonnes
-    col_left, col_right = st.columns(2)
+    # --- ONGLETS ---
+    tab_actuel, tab_prevision = st.tabs(["🌤️ Météo actuelle", "📅 Prévisions 7 jours"])
 
-    # ============ GAUCHE ============
-    with col_left:
-        weather_data = st.session_state.get("weather_data")
+    # --- ONGLET 1 ---
+    with tab_actuel:
+        # Deux colonnes
+        col_left, col_right = st.columns(2)
 
-        # Météo actuelle
-        with st.expander("🌤️ Données Météo", expanded=True):
-            with st.container(border=True):
-                st.markdown("<div class='card-title'>🌡️ Météo actuelle</div>", unsafe_allow_html=True)
+        # ============ GAUCHE ============
+        with col_left:
+            weather_data = st.session_state.get("weather_data")
 
-                if weather_data and "current" in weather_data:
-                    current = weather_data["current"]
-                    c1, c2, c3 = st.columns([1, 1, 1])
+            # Météo actuelle
+            with st.expander("🌤️ Données Météo", expanded=True):
+                with st.container(border=True):
+                    st.markdown("<div class='card-title'>🌡️ Météo actuelle</div>", unsafe_allow_html=True)
 
-                    # Température
-                    with c1:
-                        temp_txt = _fmt(current.get("temperature_2m"), 1, " °C")
-                        ressenti_txt = _fmt(current.get("apparent_temperature"), 1, " °C")
-                        st.markdown("<p class='metric-label'>Température</p>", unsafe_allow_html=True)
-                        st.markdown(f"<p class='metric-value'>{temp_txt}</p>", unsafe_allow_html=True)
-                        st.markdown(f"<p class='metric-sub'>Ressenti : {ressenti_txt}</p>", unsafe_allow_html=True)
+                    if weather_data and "current" in weather_data:
+                        current = weather_data["current"]
+                        c1, c2, c3 = st.columns([1, 1, 1])
 
-                    # Humidité
-                    with c2:
-                        hum_txt = _fmt(current.get("relative_humidity_2m"), 0, " %")
-                        st.markdown("<p class='metric-label'>Humidité</p>", unsafe_allow_html=True)
-                        st.markdown(f"<p class='metric-value'>{hum_txt}</p>", unsafe_allow_html=True)
+                        # Température
+                        with c1:
+                            temp_txt = _fmt(current.get("temperature_2m"), 1, " °C")
+                            ressenti_txt = _fmt(current.get("apparent_temperature"), 1, " °C")
+                            st.markdown("<p class='metric-label'>Température</p>", unsafe_allow_html=True)
+                            st.markdown(f"<p class='metric-value'>{temp_txt}</p>", unsafe_allow_html=True)
+                            st.markdown(f"<p class='metric-sub'>Ressenti : {ressenti_txt}</p>", unsafe_allow_html=True)
 
-                    # Vent (vitesse + flèche inline)
-                    with c3:
-                        ws = _fmt(current.get("wind_speed_10m"), 1, "")
-                        wind_dir_deg = None
-                        for k in ["wind_direction_10m","winddirection_10m","wind_direction"]:
-                            if k in current:
-                                wind_dir_deg = current.get(k); break
-                        st.markdown("<p class='metric-label'>Vent</p>", unsafe_allow_html=True)
-                        st.markdown(
-                            f"<p class='metric-value'>{ws}<span class='metric-unit'>&nbsp;km/h</span> {_wind_arrow_inline(wind_dir_deg, size=20)}</p>",
-                            unsafe_allow_html=True
-                        )
+                        # Humidité
+                        with c2:
+                            hum_txt = _fmt(current.get("relative_humidity_2m"), 0, " %")
+                            st.markdown("<p class='metric-label'>Humidité</p>", unsafe_allow_html=True)
+                            st.markdown(f"<p class='metric-value'>{hum_txt}</p>", unsafe_allow_html=True)
 
-                    # Prochaine pluie
-                    if weather_data and "hourly" in weather_data and weather_data["hourly"]:
-                        df_p = _safe_df(weather_data["hourly"][:24]).copy()
-                        if "precipitation_probability" in df_p and "date" in df_p:
-                            try:
-                                df_p["Heure"] = pd.to_datetime(df_p["date"]).dt.strftime("%d-%m %Hh")
-                                thr = 50
-                                mask = pd.to_numeric(df_p["precipitation_probability"], errors="coerce") >= thr
-                                idxs = df_p.index[mask]
-                                if len(idxs) > 0:
-                                    h = df_p.loc[idxs[0], "Heure"]
-                                    p = float(df_p.loc[idxs[0], "precipitation_probability"])
-                                    st.warning(f"🌧️ Prochaine pluie probable (≥ {thr}%) : **{h}** (~{p:.0f}%)")
-                                else:
-                                    st.success("🌞 Pas de pluie prévue (> 50%) dans les prochaines 24 h.")
-                            except Exception:
-                                pass
-                else:
-                    st.caption("— En attente d'actualisation —")
+                        # Vent (vitesse + flèche inline)
+                        with c3:
+                            ws = _fmt(current.get("wind_speed_10m"), 1, "")
+                            wind_dir_deg = None
+                            for k in ["wind_direction_10m","winddirection_10m","wind_direction"]:
+                                if k in current:
+                                    wind_dir_deg = current.get(k); break
+                            st.markdown("<p class='metric-label'>Vent</p>", unsafe_allow_html=True)
+                            st.markdown(
+                                f"<p class='metric-value'>{ws}<span class='metric-unit'>&nbsp;km/h</span> {_wind_arrow_inline(wind_dir_deg, size=20)}</p>",
+                                unsafe_allow_html=True
+                            )
 
-        # Prévisions (graphiques)
-        if weather_data and "hourly" in weather_data and len(weather_data["hourly"]) > 0:
-            with st.container(border=True):
-                st.markdown("<div class='card-title'>⏰ Prévisions horaires (24 h)</div>", unsafe_allow_html=True)
-                hourly_df = _safe_df(weather_data["hourly"][:24]).copy()
+                        # Prochaine pluie
+                        if weather_data and "hourly" in weather_data and weather_data["hourly"]:
+                            df_p = _safe_df(weather_data["hourly"][:24]).copy()
+                            if "precipitation_probability" in df_p and "date" in df_p:
+                                try:
+                                    df_p["Heure"] = pd.to_datetime(df_p["date"]).dt.strftime("%d-%m %Hh")
+                                    thr = 50
+                                    mask = pd.to_numeric(df_p["precipitation_probability"], errors="coerce") >= thr
+                                    idxs = df_p.index[mask]
+                                    if len(idxs) > 0:
+                                        h = df_p.loc[idxs[0], "Heure"]
+                                        p = float(df_p.loc[idxs[0], "precipitation_probability"])
+                                        st.warning(f"🌧️ Prochaine pluie probable (≥ {thr}%) : **{h}** (~{p:.0f}%)")
+                                    else:
+                                        st.success("🌞 Pas de pluie prévue (> 50%) dans les prochaines 24 h.")
+                                except Exception:
+                                    pass
+                    else:
+                        st.caption("— En attente d'actualisation —")
 
-                if "date" in hourly_df.columns:
-                    try:
-                        hourly_df["dt"] = pd.to_datetime(hourly_df["date"])
-                        hourly_df["Heure"] = hourly_df["dt"].dt.strftime("%d-%m %Hh")
-                    except Exception:
-                        hourly_df["Heure"] = hourly_df["date"].astype(str)
+            # Prévisions (graphiques)
+            if weather_data and "hourly" in weather_data and len(weather_data["hourly"]) > 0:
+                with st.container(border=True):
+                    st.markdown("<div class='card-title'>⏰ Prévisions horaires (24 h)</div>", unsafe_allow_html=True)
+                    hourly_df = _safe_df(weather_data["hourly"][:24]).copy()
 
-                    # Température + Ressenti
-                    if {"temperature_2m", "apparent_temperature"}.issubset(hourly_df.columns):
-                        df_temp = hourly_df.rename(columns={
-                            "temperature_2m": "Température (°C)",
-                            "apparent_temperature": "Ressenti (°C)"
-                        })[["Heure", "Température (°C)", "Ressenti (°C)"]]
-                        _line_chart_temp_duo(df_temp, x_col="Heure",
-                                             temp_col="Température (°C)", felt_col="Ressenti (°C)")
-
-                    # Pluie (%)
-                    if "precipitation_probability" in hourly_df.columns:
-                        df_rain = hourly_df.rename(columns={"precipitation_probability": "Pluie (%)"})
-                        _line_chart(df_rain, x_col="Heure", y_col="Pluie (%)", y_title="Probabilité de pluie (%)")
-                else:
-                    st.info("Structure des prévisions inattendue.")
-
-        # Soleil & UV
-        with st.expander("☀️ Soleil & UV (aujourd'hui)", expanded=True):
-            with st.container(border=True):
-                st.markdown("<div class='card-title'>☀️ Soleil & UV</div>", unsafe_allow_html=True)
-                daily_list = weather_data.get("daily") if weather_data else []
-                daily_today = daily_list[0] if daily_list else {}
-                sunrise = _fmt_hhmm(daily_today.get("sunrise"))
-                sunset  = _fmt_hhmm(daily_today.get("sunset"))
-                daylight = daily_today.get("daylight_duration")
-                sunshine = daily_today.get("sunshine_duration")
-
-                c1, c2, c3, c4 = st.columns(4)
-                c1.metric("Lever", sunrise)
-                c2.metric("Coucher", sunset)
-                c3.metric("Jour", _sec_to_hm(daylight))
-                c4.metric("Ensoleillement", _sec_to_hm(sunshine))
-
-                try:
-                    sr_raw = (weather_data.get("daily") or [{}])[0].get("sunrise")
-                    ss_raw = (weather_data.get("daily") or [{}])[0].get("sunset")
-                    now = pd.Timestamp.utcnow()
-                    sr = pd.to_datetime(sr_raw) if sr_raw else None
-                    ss = pd.to_datetime(ss_raw) if ss_raw else None
-                    if sr is not None and ss is not None and sr < ss:
-                        pct = max(0.0, min(1.0, (now - sr) / (ss - sr)))
-                        st.progress(float(pct), text=f"Progression du jour : {int(pct*100)}%")
-                except Exception:
-                    pass
-
-                if weather_data and "hourly" in weather_data and weather_data["hourly"]:
-                    df_u = _safe_df(weather_data["hourly"][:24]).copy()
-                    if "uv_index" in df_u and "date" in df_u:
+                    if "date" in hourly_df.columns:
                         try:
-                            df_u["Heure"] = pd.to_datetime(df_u["date"]).dt.strftime("%d-%m %Hh")
-                            df_u["uv_index"] = pd.to_numeric(df_u["uv_index"], errors="coerce")
-                            idx = df_u["uv_index"].idxmax()
-                            if pd.notna(idx):
-                                uv_max = float(df_u.loc[idx, "uv_index"])
-                                uv_time = df_u.loc[idx, "Heure"]
-                                k1, k2 = st.columns(2)
-                                with k1:
-                                    st.metric("Pic UV (24h)", f"{uv_max:.0f}", _uv_risk_label(uv_max))
-                                with k2:
-                                    st.caption(f"Heure du pic : **{uv_time}**")
-                            if df_u["uv_index"].notna().sum() > 1:
-                                _line_chart(df_u.rename(columns={"uv_index":"UV"}), "Heure", "UV", "Indice UV")
+                            hourly_df["dt"] = pd.to_datetime(hourly_df["date"])
+                            hourly_df["Heure"] = hourly_df["dt"].dt.strftime("%d-%m %Hh")
                         except Exception:
+                            hourly_df["Heure"] = hourly_df["date"].astype(str)
+
+                        # Température + Ressenti
+                        if {"temperature_2m", "apparent_temperature"}.issubset(hourly_df.columns):
+                            df_temp = hourly_df.rename(columns={
+                                "temperature_2m": "Température (°C)",
+                                "apparent_temperature": "Ressenti (°C)"
+                            })[["Heure", "Température (°C)", "Ressenti (°C)"]]
+                            _line_chart_temp_duo(df_temp, x_col="Heure",
+                                                 temp_col="Température (°C)", felt_col="Ressenti (°C)")
+
+                        # Pluie (%)
+                        if "precipitation_probability" in hourly_df.columns:
+                            df_rain = hourly_df.rename(columns={"precipitation_probability": "Pluie (%)"})
+                            _line_chart(df_rain, x_col="Heure", y_col="Pluie (%)", y_title="Probabilité de pluie (%)")
+                    else:
+                        st.info("Structure des prévisions inattendue.")
+
+            # Soleil & UV
+            with st.expander("☀️ Soleil & UV (aujourd'hui)", expanded=True):
+                with st.container(border=True):
+                    st.markdown("<div class='card-title'>☀️ Soleil & UV</div>", unsafe_allow_html=True)
+                    daily_list = weather_data.get("daily") if weather_data else []
+                    daily_today = daily_list[0] if daily_list else {}
+                    sunrise = _fmt_hhmm(daily_today.get("sunrise"))
+                    sunset  = _fmt_hhmm(daily_today.get("sunset"))
+                    daylight = daily_today.get("daylight_duration")
+                    sunshine = daily_today.get("sunshine_duration")
+
+                    c1, c2, c3, c4 = st.columns(4)
+                    c1.metric("Lever", sunrise)
+                    c2.metric("Coucher", sunset)
+                    c3.metric("Jour", _sec_to_hm(daylight))
+                    c4.metric("Ensoleillement", _sec_to_hm(sunshine))
+
+                    try:
+                        sr_raw = (weather_data.get("daily") or [{}])[0].get("sunrise")
+                        ss_raw = (weather_data.get("daily") or [{}])[0].get("sunset")
+                        now = pd.Timestamp.utcnow()
+                        sr = pd.to_datetime(sr_raw) if sr_raw else None
+                        ss = pd.to_datetime(ss_raw) if ss_raw else None
+                        if sr is not None and ss is not None and sr < ss:
+                            pct = max(0.0, min(1.0, (now - sr) / (ss - sr)))
+                            st.progress(float(pct), text=f"Progression du jour : {int(pct*100)}%")
+                    except Exception:
+                        pass
+
+                    if weather_data and "hourly" in weather_data and weather_data["hourly"]:
+                        df_u = _safe_df(weather_data["hourly"][:24]).copy()
+                        if "uv_index" in df_u and "date" in df_u:
+                            try:
+                                df_u["Heure"] = pd.to_datetime(df_u["date"]).dt.strftime("%d-%m %Hh")
+                                df_u["uv_index"] = pd.to_numeric(df_u["uv_index"], errors="coerce")
+                                idx = df_u["uv_index"].idxmax()
+                                if pd.notna(idx):
+                                    uv_max = float(df_u.loc[idx, "uv_index"])
+                                    uv_time = df_u.loc[idx, "Heure"]
+                                    k1, k2 = st.columns(2)
+                                    with k1:
+                                        st.metric("Pic UV (24h)", f"{uv_max:.0f}", _uv_risk_label(uv_max))
+                                    with k2:
+                                        st.caption(f"Heure du pic : **{uv_time}**")
+                                if df_u["uv_index"].notna().sum() > 1:
+                                    _line_chart(df_u.rename(columns={"uv_index":"UV"}), "Heure", "UV", "Indice UV")
+                            except Exception:
+                                st.caption("UV non disponibles.")
+                        else:
                             st.caption("UV non disponibles.")
                     else:
                         st.caption("UV non disponibles.")
-                else:
-                    st.caption("UV non disponibles.")
 
-        # Visibilité & Nuages
-        with st.expander("🌫️ Visibilité & Nuages (24 h)", expanded=False):
-            with st.container(border=True):
-                st.markdown("<div class='card-title'>🌫️ Visibilité & Nuages</div>", unsafe_allow_html=True)
-                if weather_data and "hourly" in weather_data and weather_data["hourly"]:
-                    df_v = _safe_df(weather_data["hourly"][:24]).copy()
-                    if "date" in df_v:
-                        df_v["Heure"] = pd.to_datetime(df_v["date"]).dt.strftime("%d-%m %Hh")
+            # Visibilité & Nuages
+            with st.expander("🌫️ Visibilité & Nuages (24 h)", expanded=False):
+                with st.container(border=True):
+                    st.markdown("<div class='card-title'>🌫️ Visibilité & Nuages</div>", unsafe_allow_html=True)
+                    if weather_data and "hourly" in weather_data and weather_data["hourly"]:
+                        df_v = _safe_df(weather_data["hourly"][:24]).copy()
+                        if "date" in df_v:
+                            df_v["Heure"] = pd.to_datetime(df_v["date"]).dt.strftime("%d-%m %Hh")
 
-                        if "visibility" in df_v:
-                            vis = df_v[["Heure","visibility"]].copy()
-                            try:
-                                vis["visibility"] = pd.to_numeric(vis["visibility"], errors="coerce")/1000.0
-                            except Exception:
-                                pass
-                            vis = vis.rename(columns={"visibility":"Visibilité (km)"})
-                            _line_chart(vis, "Heure", "Visibilité (km)", "Visibilité (km)")
+                            if "visibility" in df_v:
+                                vis = df_v[["Heure","visibility"]].copy()
+                                try:
+                                    vis["visibility"] = pd.to_numeric(vis["visibility"], errors="coerce")/1000.0
+                                except Exception:
+                                    pass
+                                vis = vis.rename(columns={"visibility":"Visibilité (km)"})
+                                _line_chart(vis, "Heure", "Visibilité (km)", "Visibilité (km)")
 
-                        if "cloud_cover" in df_v:
-                            cl = df_v[["Heure","cloud_cover"]].rename(columns={"cloud_cover":"Nébulosité (%)"})
-                            _line_chart(cl, "Heure", "Nébulosité (%)", "Couverture nuageuse (%)")
+                            if "cloud_cover" in df_v:
+                                cl = df_v[["Heure","cloud_cover"]].rename(columns={"cloud_cover":"Nébulosité (%)"})
+                                _line_chart(cl, "Heure", "Nébulosité (%)", "Couverture nuageuse (%)")
+                        else:
+                            st.caption("Données non disponibles.")
                     else:
                         st.caption("Données non disponibles.")
-                else:
-                    st.caption("Données non disponibles.")
 
-        # Tableau complet en bas (expander replié par défaut)
-        if weather_data and "hourly" in weather_data and len(weather_data["hourly"]) > 0:
-            with st.expander("📋 Données horaires (tableau complet)", expanded=False):
+            # Tableau complet en bas
+            if weather_data and "hourly" in weather_data and len(weather_data["hourly"]) > 0:
+                with st.expander("📋 Données horaires (tableau complet)", expanded=False):
+                    with st.container(border=True):
+                        hourly_full = _safe_df(weather_data["hourly"][:24]).copy()
+                        if "date" in hourly_full.columns:
+                            try:
+                                hourly_full["dt"] = pd.to_datetime(hourly_full["date"])
+                                hourly_full["Heure"] = hourly_full["dt"].dt.strftime("%d-%m %Hh")
+                            except Exception:
+                                hourly_full["Heure"] = hourly_full["date"].astype(str)
+                        cols = ["Heure"]
+
+                        def add_col(src, tgt, decimals=None, transform=None):
+                            if src in hourly_full.columns:
+                                s = pd.to_numeric(hourly_full[src], errors="coerce")
+                                if transform: s = transform(s)
+                                if decimals is not None: s = s.round(decimals)
+                                hourly_full[tgt] = s; cols.append(tgt)
+
+                        add_col("temperature_2m", "Température (°C)", 1)
+                        add_col("apparent_temperature", "Ressenti (°C)", 1)
+                        add_col("precipitation_probability", "Pluie (%)", 0)
+                        add_col("wind_speed_10m", "Vent (km/h)", 1)
+                        if "wind_direction_10m" in hourly_full.columns:
+                            hourly_full["Vent (°)"] = pd.to_numeric(hourly_full["wind_direction_10m"], errors="coerce").round(0)
+                            hourly_full["Vent (direction)"] = hourly_full["Vent (°)"].apply(_deg_to_cardinal)
+                            cols += ["Vent (°)", "Vent (direction)"]
+                        add_col("relative_humidity_2m", "Humidité (%)", 0)
+                        add_col("cloud_cover", "Nuages (%)", 0)
+                        add_col("visibility", "Visibilité (km)", None, transform=lambda s: s/1000.0)
+                        add_col("uv_index", "UV", 0)
+
+                        st.dataframe(hourly_full[cols], use_container_width=True)
+
+        # ============ DROITE ============
+        with col_right:
+            # Saints
+            with st.expander("📿 Saints du jour", expanded=True):
                 with st.container(border=True):
-                    hourly_full = _safe_df(weather_data["hourly"][:24]).copy()
-                    if "date" in hourly_full.columns:
-                        try:
-                            hourly_full["dt"] = pd.to_datetime(hourly_full["date"])
-                            hourly_full["Heure"] = hourly_full["dt"].dt.strftime("%d-%m %Hh")
-                        except Exception:
-                            hourly_full["Heure"] = hourly_full["date"].astype(str)
-                    cols = ["Heure"]
-
-                    def add_col(src, tgt, decimals=None, transform=None):
-                        if src in hourly_full.columns:
-                            s = pd.to_numeric(hourly_full[src], errors="coerce")
-                            if transform: s = transform(s)
-                            if decimals is not None: s = s.round(decimals)
-                            hourly_full[tgt] = s; cols.append(tgt)
-
-                    add_col("temperature_2m", "Température (°C)", 1)
-                    add_col("apparent_temperature", "Ressenti (°C)", 1)
-                    add_col("precipitation_probability", "Pluie (%)", 0)
-                    add_col("wind_speed_10m", "Vent (km/h)", 1)
-                    if "wind_direction_10m" in hourly_full.columns:
-                        hourly_full["Vent (°)"] = pd.to_numeric(hourly_full["wind_direction_10m"], errors="coerce").round(0)
-                        hourly_full["Vent (direction)"] = hourly_full["Vent (°)"].apply(_deg_to_cardinal)
-                        cols += ["Vent (°)", "Vent (direction)"]
-                    add_col("relative_humidity_2m", "Humidité (%)", 0)
-                    add_col("cloud_cover", "Nuages (%)", 0)
-                    add_col("visibility", "Visibilité (km)", None, transform=lambda s: s/1000.0)
-                    add_col("uv_index", "UV", 0)
-
-                    st.dataframe(hourly_full[cols], use_container_width=True)
-
-    # ============ DROITE ============
-    with col_right:
-        # Saints
-        with st.expander("📿 Saints du jour", expanded=True):
-            with st.container(border=True):
-                st.markdown("<div class='card-title'>🕊️ Fête du jour</div>", unsafe_allow_html=True)
-                saints_data = st.session_state.get("saints_data")
-                if saints_data:
-                    st.write(f"**Nombre de saints :** {saints_data.get('nombre_saints', 0)}")
-                    saints_list = saints_data.get("saints_majeurs", []) or []
-                    if saints_list:
-                        for i, saint in enumerate(saints_list[:5], start=1):
-                            nom = saint.get("valeur", "N/A")
-                            resume = saint.get("resume")
-                            st.markdown(f"**{i}. {nom}**")
-                            if resume:
-                                st.caption(resume if len(resume) < 400 else resume[:400] + "…")
+                    st.markdown("<div class='card-title'>🕊️ Fête du jour</div>", unsafe_allow_html=True)
+                    saints_data = st.session_state.get("saints_data")
+                    if saints_data:
+                        st.write(f"**Nombre de saints :** {saints_data.get('nombre_saints', 0)}")
+                        saints_list = saints_data.get("saints_majeurs", []) or []
+                        if saints_list:
+                            for i, saint in enumerate(saints_list[:5], start=1):
+                                nom = saint.get("valeur", "N/A")
+                                resume = saint.get("resume")
+                                st.markdown(f"**{i}. {nom}**")
+                                if resume:
+                                    # CORRECTION 1: Utilisation de st.markdown(..., unsafe_allow_html=True)
+                                    # pour interpréter les balises comme <sup>, et style 'small' pour ressembler à une caption.
+                                    trunc_resume = resume if len(resume) < 400 else resume[:400] + "…"
+                                    st.markdown(f"<small style='opacity:0.75'>{trunc_resume}</small>", unsafe_allow_html=True)
+                        else:
+                            st.info("Aucun détail de saints majeurs trouvé.")
                     else:
-                        st.info("Aucun détail de saints majeurs trouvé.")
-                else:
-                    st.caption("— En attente d'actualisation —")
+                        st.caption("— En attente d'actualisation —")
 
-        # Horoscope
-        with st.expander("🔮 Horoscope du jour", expanded=True):
-            with st.container(border=True):
-                st.markdown("<div class='card-title'>✨ Votre horoscope</div>", unsafe_allow_html=True)
-                st.selectbox(
-                    "Choisissez votre signe",
-                    options=SIGNE_KEYS,
-                    format_func=lambda k: SIGNE_LABELS[k],
-                    key="signe_sel",
-                    on_change=_trigger_horo_refresh,
+            # Horoscope
+            with st.expander("🔮 Horoscope du jour", expanded=True):
+                with st.container(border=True):
+                    st.markdown("<div class='card-title'>✨ Votre horoscope</div>", unsafe_allow_html=True)
+                    st.selectbox(
+                        "Choisissez votre signe",
+                        options=SIGNE_KEYS,
+                        format_func=lambda k: SIGNE_LABELS[k],
+                        key="signe_sel",
+                        on_change=_trigger_horo_refresh,
+                    )
+                    need_reload = (
+                        st.session_state.get("refresh_horoscope", False)
+                        or not st.session_state.get("horoscope_data")
+                        or st.session_state.get("horoscope_sign_key") != st.session_state.signe_sel
+                    )
+                    if need_reload:
+                        try:
+                            st.session_state.horoscope_data = get_horoscope_data(st.session_state.signe_sel)
+                            st.session_state.horoscope_sign_key = st.session_state.signe_sel
+                            st.toast(f"Horoscope mis à jour pour {SIGNE_LABELS.get(st.session_state.signe_sel, '')}", icon="🔮")
+                        finally:
+                            st.session_state.refresh_horoscope = False
+
+                    signe_label = SIGNE_LABELS.get(st.session_state.signe_sel, "—")
+                    st.write(f"**Signe :** {signe_label}")
+
+                    horoscope_data = st.session_state.get("horoscope_data")
+                    if horoscope_data and horoscope_data.get("prediction_francaise"):
+                        st.markdown(f"> {horoscope_data['prediction_francaise']}")
+                    else:
+                        st.caption("— En attente d'actualisation —")
+
+            # Blague
+            with st.expander("😄 Blague du jour", expanded=True):
+                with st.container(border=True):
+                    st.markdown("<div class='card-title'>🎭 Une blague pour sourire</div>", unsafe_allow_html=True)
+                    blague_data = st.session_state.get("blague_data")
+                    if blague_data:
+                        st.write(f"**Type :** {blague_data.get('type', 'N/A')}")
+                        q = blague_data.get("joke", "—")
+                        a = blague_data.get("answer", "—")
+                        st.markdown(f"**Question :** {q}")
+                        st.markdown(f'<div class="spoiler-blur"><strong>Réponse :</strong> {a}</div>', unsafe_allow_html=True)
+                    else:
+                        st.caption("— En attente d'actualisation —")
+
+    # --- ONGLET 2 ---
+    with tab_prevision:
+        weather_data = st.session_state.get("weather_data")
+        daily_list = weather_data.get("daily") if weather_data else []
+        
+        if not daily_list:
+            st.info("⚠️ Pas de données prévisionnelles disponibles.")
+        else:
+            df_daily = _safe_df(daily_list).copy()
+            
+            # On vérifie si on a les colonnes de base
+            required_basic = ["temperature_2m_max", "temperature_2m_min", "precipitation_sum"]
+            
+            if "date" in df_daily.columns and all(col in df_daily.columns for col in required_basic):
+                df_daily["dt"] = pd.to_datetime(df_daily["date"])
+                
+                # Formatage du nom du jour
+                jours_fr = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"]
+                df_daily["NomJour"] = df_daily["dt"].dt.dayofweek.map(lambda x: jours_fr[x])
+                df_daily["Jour"] = df_daily["NomJour"] + " " + df_daily["dt"].dt.strftime("%d")
+                
+                # Renommer pour les graphs et le tableau
+                rename_dict = {
+                    "temperature_2m_max": "Max (°C)",
+                    "temperature_2m_min": "Min (°C)",
+                    "precipitation_sum": "Pluie (mm)",
+                    "precipitation_probability_max": "Proba (%)",
+                    # NOUVEAUX CHAMPS
+                    "wind_speed_10m_max": "Vent (km/h)",
+                    "uv_index_max": "UV Max",
+                    "apparent_temperature_max": "Ressenti Max (°C)"
+                }
+                df_chart = df_daily.rename(columns=rename_dict)
+                
+                # --- GRAPHIQUE ---
+                st.subheader("📈 Tendances de la semaine")
+                st.caption("Barres bleues : Quantité de pluie (mm) • Lignes : Températures Min/Max")
+                _chart_7days(df_chart)
+                
+                # --- TABLEAU ---
+                st.subheader("📋 Détails quotidiens")
+                
+                # Copie pour affichage
+                df_display = df_chart.copy()
+                
+                # AJOUT DES EMOJIS
+                if "weather_code" in df_daily.columns:
+                    df_display["Météo"] = df_daily["weather_code"].apply(_get_weather_emoji)
+
+                # Formater heures lever/coucher
+                for c in ["sunrise", "sunset"]:
+                    if c in df_display.columns:
+                        df_display[c] = pd.to_datetime(df_display[c]).dt.strftime("%H:%M")
+                
+                # ORDRE D'AFFICHAGE
+                target_cols = [
+                    "Jour", "Météo", 
+                    "Min (°C)", "Max (°C)", "Ressenti Max (°C)", 
+                    "Pluie (mm)", "Proba (%)",                   
+                    "Vent (km/h)", "UV Max",                     
+                    "sunrise", "sunset"
+                ]
+                final_cols = [c for c in target_cols if c in df_display.columns]
+                
+                # CORRECTION 2 : Configuration des colonnes pour limiter à 1 décimale
+                column_config = {
+                    "Max (°C)": st.column_config.NumberColumn(format="%.1f"),
+                    "Min (°C)": st.column_config.NumberColumn(format="%.1f"),
+                    "Ressenti Max (°C)": st.column_config.NumberColumn(format="%.1f"),
+                    "Pluie (mm)": st.column_config.NumberColumn(format="%.1f"),
+                    "Vent (km/h)": st.column_config.NumberColumn(format="%.1f"),
+                    "UV Max": st.column_config.NumberColumn(format="%.1f"),
+                    "Proba (%)": st.column_config.NumberColumn(format="%d%%"), # Pas de décimale pour la proba
+                }
+
+                st.dataframe(
+                    df_display[final_cols].style.background_gradient(subset=["Max (°C)"], cmap="OrRd"),
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config=column_config # Application du formatage
                 )
-                need_reload = (
-                    st.session_state.get("refresh_horoscope", False)
-                    or not st.session_state.get("horoscope_data")
-                    or st.session_state.get("horoscope_sign_key") != st.session_state.signe_sel
-                )
-                if need_reload:
-                    try:
-                        st.session_state.horoscope_data = get_horoscope_data(st.session_state.signe_sel)
-                        st.session_state.horoscope_sign_key = st.session_state.signe_sel
-                        st.toast(f"Horoscope mis à jour pour {SIGNE_LABELS.get(st.session_state.signe_sel, '')}", icon="🔮")
-                    finally:
-                        st.session_state.refresh_horoscope = False
+            else:
+                st.warning("Données incomplètes. Mettez à jour 'requete_page1.py' avec les nouveaux paramètres.")
+                st.dataframe(df_daily)
 
-                signe_label = SIGNE_LABELS.get(st.session_state.signe_sel, "—")
-                st.write(f"**Signe :** {signe_label}")
-
-                horoscope_data = st.session_state.get("horoscope_data")
-                if horoscope_data and horoscope_data.get("prediction_francaise"):
-                    st.markdown(f"> {horoscope_data['prediction_francaise']}")
-                else:
-                    st.caption("— En attente d'actualisation —")
-
-        # Blague
-        with st.expander("😄 Blague du jour", expanded=True):
-            with st.container(border=True):
-                st.markdown("<div class='card-title'>🎭 Une blague pour sourire</div>", unsafe_allow_html=True)
-                blague_data = st.session_state.get("blague_data")
-                if blague_data:
-                    st.write(f"**Type :** {blague_data.get('type', 'N/A')}")
-                    q = blague_data.get("joke", "—")
-                    a = blague_data.get("answer", "—")
-                    st.markdown(f"**Question :** {q}")
-                    st.markdown(f'<div class="spoiler-blur"><strong>Réponse :</strong> {a}</div>', unsafe_allow_html=True)
-                else:
-                    st.caption("— En attente d'actualisation —")
-
-    # Infos
+    # Footer
     st.markdown("---")
     st.subheader("ℹ️ Informations détaillées")
     with st.expander("🛠️ Données techniques"):
@@ -560,5 +742,4 @@ def show_data_page():
             - Lever/Coucher du soleil en **hh:mm**.
             """
         )
-# Appel direct
 show_data_page()

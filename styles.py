@@ -335,12 +335,12 @@ div[data-testid="stMetricDelta"] svg {
 }
 
 .stTabs [data-baseweb="tab"] {
-    height: 60px;
+    height: 50px;
     white-space: pre-wrap;
     border-radius: 12px;
-    padding: 0 24px;
+    padding: 0 16px;
     font-weight: 600;
-    font-size: 1rem;
+    font-size: 0.85rem;
     background: rgba(30, 33, 48, 0.8);
     color: rgba(250, 250, 250, 0.7);
     border: 2px solid transparent;

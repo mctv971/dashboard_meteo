@@ -21,88 +21,14 @@ try:
         get_horoscope_data,
         get_blague_data
     )
+    from styles import GLOBAL_STYLE
+    from recommendations_generator import generate_recommendations, format_recommendations_for_display
 except ImportError as e:
     st.error(f"Erreur d'importation des fonctions : {e}")
     st.stop()
 
-# ---------- Styles ----------
-st.markdown("""
-<style>
-/* Indicateurs uniformes (appliqués sur des <p>) */
-.metric-label{font-size:.9rem;opacity:.8;margin:0 0 4px 0}
-.metric-value{font-size:2rem;font-weight:700;line-height:1.1;margin:0}
-.metric-unit{font-size:1rem;opacity:.85;margin-left:.2rem}
-.metric-sub{font-size:.95rem;opacity:.8;margin:.15rem 0 0 0}
-
-/* Titres dans les containers */
-.card-title{font-weight:700;font-size:1.05rem;margin-bottom:8px}
-
-/* Spoiler avec effet de flou */
-.spoiler-blur {
-    /* Utilisation de la variable de fond secondaire pour s'adapter au Dark Mode */
-    background-color: var(--secondary-background-color); 
-    color: transparent;             
-    text-shadow: 0 0 10px rgba(128,128,128,0.7); /* Ombre grise neutre */
-    border-radius: 5px;
-    padding: 10px;
-    cursor: pointer;                
-    transition: all 0.3s ease;
-    user-select: none;              
-}
-
-/* Quand on passe la souris dessus OU qu'on clique (active) */
-.spoiler-blur:hover, .spoiler-blur:active {
-    color: var(--text-color);       /* Couleur du texte du thème actuel */
-    text-shadow: none;              
-    background-color: var(--background-color);      
-    border: 1px solid var(--secondary-background-color);
-}
-
-/* --- ONGLETS (TABS) ADAPTATIFS DARK/LIGHT MODE --- */
-
-/* Espace entre les onglets */
-.stTabs [data-baseweb="tab-list"] {
-    gap: 8px;
-}
-
-/* Style par défaut d'un onglet (inactif) */
-.stTabs [data-baseweb="tab"] {
-    height: 50px;
-    white-space: pre-wrap;
-    border-radius: 8px;
-    padding: 0 20px;
-    font-weight: 500;
-    
-    /* Variable Streamlit : Gris clair en Light Mode, Gris foncé en Dark Mode */
-    background-color: var(--secondary-background-color); 
-    
-    /* Variable Streamlit : Noir en Light Mode, Blanc en Dark Mode */
-    color: var(--text-color); 
-    
-    border: 1px solid transparent; /* Bordure invisible par défaut */
-}
-
-/* Effet au survol d'un onglet inactif */
-.stTabs [data-baseweb="tab"]:hover {
-    background-color: rgba(150, 150, 150, 0.2); /* Légère surbrillance universelle */
-}
-
-/* Style de l'onglet SÉLECTIONNÉ (Actif) */
-.stTabs [aria-selected="true"] {
-    /* Devient la couleur de fond principale (Blanc pur ou Noir pur) */
-    background-color: var(--background-color);
-    
-    /* Bordure subtile qui s'adapte au thème */
-    border: 1px solid var(--secondary-background-color);
-    /* border-bottom: none; (Optionnel si on veut un effet "dossier ouvert") */
-    
-    font-weight: 700;
-    
-    /* Le texte prend la couleur "Primaire" (souvent rouge/orange par défaut dans Streamlit) */
-    color: var(--primary-color);
-}
-</style>
-""", unsafe_allow_html=True)
+# Appliquer le style global
+st.markdown(GLOBAL_STYLE, unsafe_allow_html=True)
 
 # ---------- Helpers ----------
 def _safe_df(df_like):
@@ -333,8 +259,13 @@ def show_data_page():
     _ensure_state()
 
     if "latitude" not in st.session_state or "longitude" not in st.session_state:
-        st.error("❌ Aucune ville sélectionnée. Retournez à la page d'accueil.")
-        st.info("Veuillez retourner à la page d'accueil (menu à gauche) et choisir une ville.")
+        st.error("❌ Aucune ville sélectionnée. Redirection vers l'accueil...")
+        st.info("📍 Veuillez sélectionner une ville sur la page d'accueil.")
+        
+        # Redirection automatique après 2 secondes
+        import time
+        time.sleep(1)
+        st.switch_page("Accueil.py")
         return
 
     # Auto-récupération à l’ouverture / changement de ville
@@ -1347,115 +1278,141 @@ def show_data_page():
     with tab_reco:
         st.subheader("🎯 Recommandations & Activités")
         weather_data = st.session_state.get("weather_data")
+        ville = st.session_state.get("ville_selectionnee", "Ville")
         
         if not weather_data:
             st.info("Aucune donnée disponible.")
         else:
-            daily_list = weather_data.get("daily", [])
-            hourly_list = weather_data.get("hourly", [])
-            current = weather_data.get("current", {})
+            # Génération automatique des recommandations IA
+            st.markdown('<div class="weather-card">', unsafe_allow_html=True)
+            st.markdown("### 🤖 Recommandations générées par Intelligence Artificielle")
+            st.markdown("""
+            <p style="opacity: 0.8; margin-bottom: 1rem;">
+            Recommandations personnalisées basées sur la météo actuelle et les spécificités de votre ville.
+            </p>
+            """, unsafe_allow_html=True)
             
-            # Analyser les conditions
-            temp = current.get("temperature_2m", 20)
-            rain_prob = 0
-            uv = 0
-            wind = current.get("wind_speed_10m", 0)
+            # Bouton de rafraîchissement uniquement
+            col1, col2, col3 = st.columns([1, 1, 2])
+            with col1:
+                if st.button("🔄 Régénérer", use_container_width=True, key="refresh_reco"):
+                    if "ai_recommendations" in st.session_state:
+                        del st.session_state.ai_recommendations
+                    st.rerun()
             
-            if hourly_list:
-                df_h = _safe_df(hourly_list[:24])
-                if "precipitation_probability" in df_h:
-                    rain_prob = pd.to_numeric(df_h["precipitation_probability"], errors="coerce").max()
-                if "uv_index" in df_h:
-                    uv = pd.to_numeric(df_h["uv_index"], errors="coerce").max()
+            st.markdown('</div>', unsafe_allow_html=True)
             
-            # Activités recommandées
-            st.markdown("### 🏃 Activités sportives recommandées")
+            # Génération automatique si pas encore en cache
+            if "ai_recommendations" not in st.session_state:
+                with st.spinner("🤖 Génération de recommandations personnalisées en cours..."):
+                    reco_data = generate_recommendations(weather_data, ville)
+                    st.session_state.ai_recommendations = reco_data
             
-            activities = []
+            reco_data = st.session_state.ai_recommendations
             
-            # Conditions parfaites
-            if temp > 15 and temp < 28 and rain_prob < 30 and wind < 30:
-                activities.append(("🚴", "Vélo", "Conditions idéales"))
-                activities.append(("🏃", "Course à pied", "Parfait pour courir"))
-                activities.append(("🧘", "Yoga en extérieur", "Profitez du beau temps"))
-            
-            # Pluie
-            if rain_prob > 50:
-                activities.append(("🏊", "Piscine couverte", "Il pleut dehors"))
-                activities.append(("🏋️", "Salle de sport", "Restez au sec"))
-                activities.append(("🎳", "Bowling", "Activité indoor"))
-            
-            # Chaleur
-            if temp > 28:
-                activities.append(("🏊", "Baignade", "Rafraîchissez-vous"))
-                activities.append(("🚶", "Balade tôt le matin", "Évitez les heures chaudes"))
-            
-            # Froid
-            if temp < 10:
-                activities.append(("⛷️", "Sports d'hiver", "Profitez du froid"))
-                activities.append(("🏃", "Jogging matinal", "Habillez-vous chaudement"))
-            
-            # Vent
-            if wind > 30:
-                activities.append(("🪁", "Cerf-volant", "Vent favorable"))
-                activities.append(("⛵", "Voile", "Conditions venteuses"))
-            
-            if activities:
-                for emoji, activity, desc in activities:
-                    st.success(f"{emoji} **{activity}** : {desc}")
+            if reco_data.get("success"):
+                # Afficher les recommandations générées
+                st.markdown("---")
+                formatted_content = format_recommendations_for_display(reco_data)
+                st.markdown(formatted_content, unsafe_allow_html=True)
+                
+                # Afficher les données météo utilisées
+                with st.expander("📊 Données météo utilisées pour la génération"):
+                    st.markdown("#### 🌡️ Températures")
+                    col1, col2, col3, col4 = st.columns(4)
+                    col1.metric("Actuelle", f"{reco_data.get('temp', 0):.1f}°C")
+                    col2.metric("Ressentie", f"{reco_data.get('apparent_temp', 0):.1f}°C")
+                    col3.metric("Min", f"{reco_data.get('temp_min', 0):.1f}°C")
+                    col4.metric("Max", f"{reco_data.get('temp_max', 0):.1f}°C")
+                    
+                    st.markdown("#### 💧 Humidité & Précipitations")
+                    col1, col2, col3, col4 = st.columns(4)
+                    col1.metric("Humidité", f"{reco_data.get('humidity', 0):.0f}%")
+                    col2.metric("Pluie (max)", f"{reco_data.get('rain_prob', 0):.0f}%")
+                    col3.metric("Pluie (moy)", f"{reco_data.get('rain_prob_avg', 0):.0f}%")
+                    col4.metric("Précip. totales", f"{reco_data.get('precip_sum', 0):.1f} mm")
+                    
+                    st.markdown("#### 💨 Vent & Ciel")
+                    col1, col2, col3, col4 = st.columns(4)
+                    col1.metric("Vent", f"{reco_data.get('wind', 0):.1f} km/h")
+                    col2.metric("Rafales", f"{reco_data.get('wind_gusts', 0):.1f} km/h")
+                    col3.metric("Nuages", f"{reco_data.get('cloud_cover', 0):.0f}%")
+                    col4.metric("Pression", f"{reco_data.get('pressure', 0):.0f} hPa")
+                    
+                    st.markdown("#### ☀️ Soleil & UV")
+                    col1, col2, col3, col4 = st.columns(4)
+                    col1.metric("UV max", f"{reco_data.get('uv', 0):.1f}")
+                    sunshine = reco_data.get('sunshine_duration', 0)
+                    daylight = reco_data.get('daylight_duration', 0)
+                    col2.metric("Ensoleillement", f"{sunshine:.1f}h")
+                    col3.metric("Durée du jour", f"{daylight:.1f}h")
+                    visibility = reco_data.get('visibility')
+                    col4.metric("Visibilité", f"{visibility:.1f} km" if visibility else "N/A")
+                    
+                    if reco_data.get('temps_next_days'):
+                        st.markdown("#### 📈 Tendances (3 prochains jours)")
+                        temps_next = reco_data.get('temps_next_days', [])
+                        rain_next = reco_data.get('rain_next_days', [])
+                        temp_trend = reco_data.get('temp_trend', 'stable')
+                        
+                        col1, col2, col3 = st.columns(3)
+                        if len(temps_next) >= 2:
+                            col1.metric("Températures", f"{temps_next[0]:.1f}°C → {temps_next[-1]:.1f}°C", 
+                                       delta=f"{temp_trend}")
+                        if rain_next:
+                            col2.metric("Pluie moyenne", f"{sum(rain_next)/len(rain_next):.0f}%")
+                        
+                        sunrise = reco_data.get('sunrise', '')
+                        sunset = reco_data.get('sunset', '')
+                        if sunrise and sunset:
+                            col3.metric("Lever/Coucher", f"{sunrise.split()[1][:5]} / {sunset.split()[1][:5]}")
             else:
-                st.info("Consultez les détails météo pour choisir votre activité")
-            
-            # Jardinage
-            st.markdown("### 🌱 Jardinage")
-            if rain_prob < 20 and daily_list:
-                df_d = _safe_df(daily_list[:3])
-                if "precipitation_sum" in df_d:
-                    total_rain = pd.to_numeric(df_d["precipitation_sum"], errors="coerce").sum()
-                    if total_rain < 5:
-                        st.warning("💧 Pensez à arroser : Peu de pluie prévue dans les 3 prochains jours")
-                    if uv > 6:
-                        st.info("🌿 Bon moment pour planter (attention au soleil)")
-            
-            # Entretien voiture
-            st.markdown("### 🚗 Entretien véhicule")
-            if daily_list:
-                df_d = _safe_df(daily_list[:2])
-                if "precipitation_probability_max" in df_d:
-                    max_rain = pd.to_numeric(df_d["precipitation_probability_max"], errors="coerce").max()
-                    if max_rain < 20:
-                        st.success("🚗 Bon moment pour laver la voiture (pas de pluie prévue)")
-            
-            # Linge
-            st.markdown("### 👕 Séchage du linge")
-            if rain_prob < 30 and wind > 10 and temp > 15:
-                st.success("👔 Excellentes conditions pour sécher le linge dehors !")
-            elif rain_prob > 50:
-                st.warning("🌧️ Privilégiez le séchage en intérieur")
-            
-            # Sorties & loisirs
-            st.markdown("### 🎭 Sorties & Loisirs")
-            if rain_prob < 30 and temp > 18 and temp < 30:
-                st.success("🏞️ **Pique-nique** : Conditions parfaites !")
-                st.success("🚶 **Randonnée** : Excellente journée pour marcher")
-                st.success("📸 **Photographie extérieure** : Belle lumière")
-            elif rain_prob > 50:
-                st.info("🎬 **Cinéma** : Bon moment pour un film")
-                st.info("🏛️ **Musées** : Visitez en intérieur")
-                st.info("☕ **Café/Restaurant** : Profitez d'un moment cosy")
-            
-            # Synthèse
-            st.markdown("### 📋 Synthèse de la journée")
-            if rain_prob < 20 and 18 < temp < 26 and uv < 8:
-                st.success("✨ **Journée idéale !** Profitez-en pour toutes vos activités extérieures.")
-            elif rain_prob > 70:
-                st.warning("☔ **Journée pluvieuse.** Prévoyez des activités en intérieur ou un parapluie.")
-            elif temp > 30:
-                st.warning("🔥 **Journée chaude.** Hydratez-vous et évitez le soleil entre 12h et 16h.")
-            elif temp < 5:
-                st.info("❄️ **Journée froide.** Couvrez-vous bien pour sortir.")
-            else:
-                st.info("🌤️ **Journée normale.** Adaptez vos activités selon vos préférences.")
+                st.error(f"❌ Erreur lors de la génération : {reco_data.get('error', 'Inconnue')}")
+                st.info("💡 Vérifiez que votre clé API GROQ est correctement configurée dans le fichier .env")
+                
+                # Affichage de secours avec recommandations basiques
+                st.markdown("---")
+                st.markdown("### 📝 Recommandations basiques (mode dégradé)")
+                
+                current = weather_data.get("current", {})
+                hourly_list = weather_data.get("hourly", [])
+                
+                temp = current.get("temperature_2m", 20)
+                wind = current.get("wind_speed_10m", 0)
+                
+                rain_prob = 0
+                if hourly_list:
+                    df_h = _safe_df(hourly_list[:24])
+                    if "precipitation_probability" in df_h:
+                        rain_prob = pd.to_numeric(df_h["precipitation_probability"], errors="coerce").max()
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.markdown("#### ☀️ Conditions actuelles")
+                    if rain_prob < 30:
+                        st.success("✅ Peu de pluie prévue - Activités extérieures possibles")
+                    else:
+                        st.warning("☔ Risque de pluie - Privilégiez les activités en intérieur")
+                    
+                    if 15 < temp < 28:
+                        st.success("✅ Température agréable pour les activités")
+                    elif temp < 15:
+                        st.info("🧥 Pensez à vous couvrir")
+                    else:
+                        st.warning("🔥 Chaleur - Hydratez-vous bien")
+                
+                with col2:
+                    st.markdown("#### 💡 Suggestions rapides")
+                    if temp > 15 and rain_prob < 30:
+                        st.write("🚴 Sports en extérieur")
+                        st.write("🏞️ Randonnée, pique-nique")
+                    if rain_prob > 50:
+                        st.write("🏛️ Musées, cinéma")
+                        st.write("☕ Cafés, restaurants")
+                    if wind > 30:
+                        st.write("🪁 Cerf-volant")
+                        st.write("⛵ Activités nautiques")
 
     # Footer
     st.markdown("---")

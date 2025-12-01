@@ -10,6 +10,10 @@ if root_dir not in sys.path:
     sys.path.append(root_dir)
 
 from chat_agent import run_agent
+from styles import GLOBAL_STYLE
+
+# Appliquer le style global
+st.markdown(GLOBAL_STYLE, unsafe_allow_html=True)
 
 
 def init_state():
@@ -18,17 +22,22 @@ def init_state():
 
 
 def show_header():
-    st.title("🤖 Chatbot IA — Météo")
-    st.caption("Agent LangChain/LangGraph propulsé par Groq — réponses en français")
+    st.markdown('<h1 class="animate-fade-in">🤖 Assistant Météo Intelligent</h1>', unsafe_allow_html=True)
+    st.markdown('<p style="font-size: 1.1rem; opacity: 0.8; text-align: center;">Agent IA propulsé par LangChain & Groq — Réponses contextualisées et enrichies</p>', unsafe_allow_html=True)
+    st.markdown("---")
 
     # Context coords if set
     lat = st.session_state.get("latitude")
     lon = st.session_state.get("longitude")
     ville = st.session_state.get("ville_selectionnee")
+    
+    st.markdown('<div class="weather-card">', unsafe_allow_html=True)
     if lat is not None and lon is not None:
-        st.info(f"Contexte de la ville: {ville or 'N/A'} — ({lat:.4f}, {lon:.4f})")
+        st.success(f"📍 **Contexte actif :** {ville or 'N/A'} — ({lat:.4f}, {lon:.4f})")
+        st.info("💡 L'assistant peut maintenant vous donner des prévisions précises et des recommandations pour cette ville !")
     else:
-        st.warning("Aucune ville sélectionnée — Paris sera utilisé par défaut.")
+        st.warning("⚠️ Aucune ville sélectionnée — Retournez à l'accueil pour choisir une ville.")
+    st.markdown('</div>', unsafe_allow_html=True)
 
 
 def show_chat():

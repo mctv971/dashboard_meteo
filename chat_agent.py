@@ -31,23 +31,26 @@ load_dotenv()
 
 def _get_city_coords(city_name: str) -> Optional[tuple[float, float]]:
     """
-    Utilise l'API de géocodage Nominatim pour obtenir les coordonnées d'une ville.
+    Utilise l'API de géocodage Photon pour obtenir les coordonnées d'une ville.
+    Photon est plus fiable que Nominatim pour les déploiements cloud.
     Retourne (latitude, longitude) ou None si échec.
     """
     try:
-        url = "https://nominatim.openstreetmap.org/search"
+        url = "https://photon.komoot.io/api/"
         params = {
             "q": city_name,
-            "format": "json",
-            "limit": 1
+            "limit": 1,
+            "lang": "fr"
         }
-        headers = {"User-Agent": "MeteoBot/1.0"}
-        response = requests.get(url, params=params, headers=headers, timeout=10)
+        response = requests.get(url, params=params, timeout=10)
         response.raise_for_status()
-        results = response.json()
-        if results:
-            lat = float(results[0]["lat"])
-            lon = float(results[0]["lon"])
+        
+        data = response.json()
+        
+        if data.get("features") and len(data["features"]) > 0:
+            coordinates = data["features"][0]["geometry"]["coordinates"]
+            # Photon renvoie [longitude, latitude], on inverse
+            lon, lat = coordinates[0], coordinates[1]
             return lat, lon
     except Exception as e:
         print(f"Erreur géocodage pour '{city_name}': {e}")

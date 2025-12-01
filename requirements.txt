@@ -6,9 +6,8 @@ geopy
 openmeteo-requests
 requests-cache
 retry-requests
-googletrans
+googletrans==4.0.0rc1
 blagues-api
-asyncio
 
 # Dépendances pour chatbot IA avec agent météo
 langchain
@@ -18,3 +17,5 @@ langchain-community
 langgraph
 python-dotenv
 streamlit-chat
+matplotlib
+numpy

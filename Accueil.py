@@ -1,5 +1,5 @@
 import streamlit as st
-from geopy.geocoders import Nominatim
+import requests
 from styles import GLOBAL_STYLE
 
 # -----------------------
@@ -30,14 +30,40 @@ VILLES_PREDEFINIES = {
 }
 
 def geocode_city(city_name):
+    """
+    Géocode une ville en utilisant Photon API (alternative plus fiable que Nominatim).
+    Photon est basé sur les données OpenStreetMap mais sans rate limiting strict.
+    """
     try:
-        geolocator = Nominatim(user_agent="weather_app", timeout=10)
-        location = geolocator.geocode(city_name)
-        if location:
-            return location.latitude, location.longitude
+        # Utilisation de Photon API - plus fiable pour les déploiements cloud
+        url = "https://photon.komoot.io/api/"
+        params = {
+            "q": city_name,
+            "limit": 1,
+            "lang": "fr"
+        }
+        
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+        
+        data = response.json()
+        
+        if data.get("features") and len(data["features"]) > 0:
+            coordinates = data["features"][0]["geometry"]["coordinates"]
+            # Photon renvoie [longitude, latitude], on inverse
+            return coordinates[1], coordinates[0]
+        
+        st.warning(f"Ville '{city_name}' non trouvée. Essayez un autre nom.")
+        return None
+        
+    except requests.exceptions.Timeout:
+        st.error("⏱️ Timeout : Le service de géocodage met trop de temps à répondre.")
+        return None
+    except requests.exceptions.RequestException as e:
+        st.error(f"❌ Erreur réseau lors du géocodage : {e}")
         return None
     except Exception as e:
-        st.error(f"Erreur géocodage : {e}")
+        st.error(f"❌ Erreur géocodage : {e}")
         return None
 
 

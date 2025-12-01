@@ -31,7 +31,7 @@ VILLES_PREDEFINIES = {
 
 def geocode_city(city_name):
     try:
-        geolocator = Nominatim(user_agent="weather_app")
+        geolocator = Nominatim(user_agent="weather_app", timeout=10)
         location = geolocator.geocode(city_name)
         if location:
             return location.latitude, location.longitude

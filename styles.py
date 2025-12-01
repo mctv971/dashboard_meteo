@@ -335,18 +335,25 @@ div[data-testid="stMetricDelta"] svg {
 }
 
 .stTabs [data-baseweb="tab"] {
-    height: 50px;
-    white-space: pre-wrap;
+    height: auto;
+    min-height: 45px;
+    white-space: normal;
+    word-wrap: break-word;
     border-radius: 12px;
-    padding: 0 16px;
+    padding: 8px 12px;
     font-weight: 600;
-    font-size: 0.85rem;
+    font-size: 0.8rem;
+    line-height: 1.2;
     background: rgba(30, 33, 48, 0.8);
     color: rgba(250, 250, 250, 0.7);
     border: 2px solid transparent;
     transition: var(--transition-smooth);
     position: relative;
     overflow: hidden;
+    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .stTabs [data-baseweb="tab"]::before {

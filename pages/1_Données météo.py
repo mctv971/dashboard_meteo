@@ -409,8 +409,8 @@ def show_data_page():
                     sunshine = daily_today.get("sunshine_duration")
 
                     c1, c2, c3, c4 = st.columns(4)
-                    c1.metric("Lever", sunrise)
-                    c2.metric("Coucher", sunset)
+                    c1.metric("Lever", sunset)
+                    c2.metric("Coucher", sunrise)
                     c3.metric("Jour", _sec_to_hm(daylight))
                     c4.metric("Ensoleillement", _sec_to_hm(sunshine))
 

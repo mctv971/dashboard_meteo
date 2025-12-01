@@ -4,6 +4,10 @@ import pandas as pd
 import os
 import sys
 import altair as alt
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+from matplotlib.patches import FancyBboxPatch
 
 # S'assurer que le répertoire principal est importable
 root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -356,7 +360,17 @@ def show_data_page():
             _fetch_all()
 
     # --- ONGLETS ---
-    tab_actuel, tab_prevision = st.tabs(["🌤️ Météo actuelle", "📅 Prévisions 7 jours"])
+    tab_actuel, tab_prevision, tab_stats, tab_vent, tab_precip, tab_soleil, tab_confort, tab_jour_nuit, tab_reco = st.tabs([
+        "🌤️ Météo actuelle", 
+        "📅 Prévisions 7 jours",
+        "📊 Statistiques",
+        "💨 Vent & Pression",
+        "💧 Précipitations",
+        "☀️ Ensoleillement & UV",
+        "🌡️ Confort",
+        "🌙 Jour vs Nuit",
+        "🎯 Recommandations"
+    ])
 
     # --- ONGLET 1 ---
     with tab_actuel:
@@ -722,6 +736,726 @@ def show_data_page():
             else:
                 st.warning("Données incomplètes. Mettez à jour 'requete_page1.py' avec les nouveaux paramètres.")
                 st.dataframe(df_daily)
+
+    # --- ONGLET 3: STATISTIQUES & TENDANCES ---
+    with tab_stats:
+        st.subheader("📊 Statistiques & Tendances")
+        weather_data = st.session_state.get("weather_data")
+        
+        if not weather_data:
+            st.info("Aucune donnée disponible.")
+        else:
+            daily_list = weather_data.get("daily", [])
+            hourly_list = weather_data.get("hourly", [])
+            
+            if daily_list:
+                df_daily = _safe_df(daily_list).copy()
+                
+                # Moyennes de la semaine
+                st.markdown("### 📈 Moyennes de la semaine")
+                col1, col2, col3, col4 = st.columns(4)
+                
+                with col1:
+                    if "temperature_2m_max" in df_daily and "temperature_2m_min" in df_daily:
+                        avg_temp = (pd.to_numeric(df_daily["temperature_2m_max"], errors="coerce").mean() + 
+                                   pd.to_numeric(df_daily["temperature_2m_min"], errors="coerce").mean()) / 2
+                        st.metric("Température moyenne", f"{avg_temp:.1f} °C")
+                
+                with col2:
+                    if "precipitation_sum" in df_daily:
+                        total_precip = pd.to_numeric(df_daily["precipitation_sum"], errors="coerce").sum()
+                        st.metric("Précipitations totales", f"{total_precip:.1f} mm")
+                
+                with col3:
+                    if "wind_speed_10m_max" in df_daily:
+                        avg_wind = pd.to_numeric(df_daily["wind_speed_10m_max"], errors="coerce").mean()
+                        st.metric("Vent moyen (max)", f"{avg_wind:.1f} km/h")
+                
+                with col4:
+                    if "uv_index_max" in df_daily:
+                        avg_uv = pd.to_numeric(df_daily["uv_index_max"], errors="coerce").mean()
+                        st.metric("UV moyen", f"{avg_uv:.1f}")
+                
+                # Extrêmes
+                st.markdown("### 🔥 Extrêmes de la semaine")
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.markdown("#### 🌡️ Températures")
+                    if "temperature_2m_max" in df_daily and "date" in df_daily:
+                        idx_max = pd.to_numeric(df_daily["temperature_2m_max"], errors="coerce").idxmax()
+                        if pd.notna(idx_max):
+                            day_max = pd.to_datetime(df_daily.loc[idx_max, "date"]).strftime("%A %d")
+                            temp_max = df_daily.loc[idx_max, "temperature_2m_max"]
+                            st.success(f"🔥 Jour le plus chaud : **{day_max}** ({temp_max:.1f}°C)")
+                    
+                    if "temperature_2m_min" in df_daily and "date" in df_daily:
+                        idx_min = pd.to_numeric(df_daily["temperature_2m_min"], errors="coerce").idxmin()
+                        if pd.notna(idx_min):
+                            day_min = pd.to_datetime(df_daily.loc[idx_min, "date"]).strftime("%A %d")
+                            temp_min = df_daily.loc[idx_min, "temperature_2m_min"]
+                            st.info(f"❄️ Jour le plus froid : **{day_min}** ({temp_min:.1f}°C)")
+                
+                with col2:
+                    st.markdown("#### 💨 Vent & Pluie")
+                    if "wind_speed_10m_max" in df_daily and "date" in df_daily:
+                        idx_wind = pd.to_numeric(df_daily["wind_speed_10m_max"], errors="coerce").idxmax()
+                        if pd.notna(idx_wind):
+                            day_wind = pd.to_datetime(df_daily.loc[idx_wind, "date"]).strftime("%A %d")
+                            wind_max = df_daily.loc[idx_wind, "wind_speed_10m_max"]
+                            st.warning(f"💨 Jour le plus venteux : **{day_wind}** ({wind_max:.1f} km/h)")
+                    
+                    if "precipitation_sum" in df_daily and "date" in df_daily:
+                        idx_rain = pd.to_numeric(df_daily["precipitation_sum"], errors="coerce").idxmax()
+                        if pd.notna(idx_rain):
+                            day_rain = pd.to_datetime(df_daily.loc[idx_rain, "date"]).strftime("%A %d")
+                            rain_max = df_daily.loc[idx_rain, "precipitation_sum"]
+                            st.info(f"🌧️ Jour le plus pluvieux : **{day_rain}** ({rain_max:.1f} mm)")
+                
+                # Graphiques comparatifs
+                if hourly_list and len(hourly_list) > 0:
+                    st.markdown("### 📉 Évolution température & humidité (24h)")
+                    df_h = _safe_df(hourly_list[:24]).copy()
+                    if "date" in df_h:
+                        df_h["Heure"] = pd.to_datetime(df_h["date"]).dt.strftime("%Hh")
+                        
+                        if "temperature_2m" in df_h and "relative_humidity_2m" in df_h:
+                            fig, ax1 = plt.subplots(figsize=(10, 4))
+                            
+                            ax1.set_xlabel('Heure')
+                            ax1.set_ylabel('Température (°C)', color='tab:red')
+                            ax1.plot(df_h["Heure"], pd.to_numeric(df_h["temperature_2m"], errors="coerce"), 
+                                    color='tab:red', marker='o', label='Température')
+                            ax1.tick_params(axis='y', labelcolor='tab:red')
+                            ax1.grid(alpha=0.3)
+                            
+                            ax2 = ax1.twinx()
+                            ax2.set_ylabel('Humidité (%)', color='tab:blue')
+                            ax2.plot(df_h["Heure"], pd.to_numeric(df_h["relative_humidity_2m"], errors="coerce"), 
+                                    color='tab:blue', marker='s', label='Humidité')
+                            ax2.tick_params(axis='y', labelcolor='tab:blue')
+                            
+                            plt.title('Corrélation Température-Humidité')
+                            plt.xticks(rotation=45)
+                            plt.tight_layout()
+                            st.pyplot(fig)
+                            plt.close()
+
+    # --- ONGLET 4: VENT & PRESSION ---
+    with tab_vent:
+        st.subheader("💨 Vent & Pression")
+        weather_data = st.session_state.get("weather_data")
+        
+        if not weather_data:
+            st.info("Aucune donnée disponible.")
+        else:
+            hourly_list = weather_data.get("hourly", [])
+            current = weather_data.get("current", {})
+            
+            # Données actuelles
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                ws = current.get("wind_speed_10m", 0)
+                st.metric("Vent actuel", f"{ws:.1f} km/h")
+            with col2:
+                wg = current.get("wind_gusts_10m", 0)
+                st.metric("Rafales", f"{wg:.1f} km/h")
+            with col3:
+                press = current.get("pressure_msl", 0)
+                st.metric("Pression", f"{press:.0f} hPa")
+            
+            if hourly_list and len(hourly_list) > 0:
+                df_h = _safe_df(hourly_list[:24]).copy()
+                
+                # Rose des vents (version simplifiée)
+                st.markdown("### 🧭 Rose des vents (24h)")
+                if "wind_direction_10m" in df_h and "wind_speed_10m" in df_h:
+                    directions = pd.to_numeric(df_h["wind_direction_10m"], errors="coerce").dropna()
+                    speeds = pd.to_numeric(df_h["wind_speed_10m"], errors="coerce").dropna()
+                    
+                    if len(directions) > 0:
+                        fig, ax = plt.subplots(figsize=(8, 8), subplot_kw=dict(projection='polar'))
+                        
+                        # Convertir en radians
+                        theta = np.radians(directions)
+                        
+                        # Tracer les vecteurs
+                        colors = plt.cm.viridis(speeds / speeds.max())
+                        ax.scatter(theta, speeds, c=colors, s=50, alpha=0.6)
+                        
+                        ax.set_theta_zero_location('N')
+                        ax.set_theta_direction(-1)
+                        ax.set_title('Rose des vents - Direction et vitesse', pad=20)
+                        ax.set_ylabel('Vitesse (km/h)')
+                        
+                        st.pyplot(fig)
+                        plt.close()
+                
+                # Graphique vitesse du vent + rafales
+                st.markdown("### 💨 Vitesse du vent & rafales (24h)")
+                if "date" in df_h:
+                    df_h["Heure"] = pd.to_datetime(df_h["date"]).dt.strftime("%Hh")
+                    
+                    if "wind_speed_10m" in df_h and "wind_gusts_10m" in df_h:
+                        fig, ax = plt.subplots(figsize=(10, 4))
+                        
+                        ax.plot(df_h["Heure"], pd.to_numeric(df_h["wind_speed_10m"], errors="coerce"), 
+                               label='Vent', marker='o', color='steelblue')
+                        ax.plot(df_h["Heure"], pd.to_numeric(df_h["wind_gusts_10m"], errors="coerce"), 
+                               label='Rafales', marker='s', color='orange', alpha=0.7)
+                        
+                        ax.axhline(y=40, color='r', linestyle='--', alpha=0.5, label='Seuil vent fort (40 km/h)')
+                        
+                        ax.set_xlabel('Heure')
+                        ax.set_ylabel('Vitesse (km/h)')
+                        ax.set_title('Évolution du vent')
+                        ax.legend()
+                        ax.grid(alpha=0.3)
+                        plt.xticks(rotation=45)
+                        plt.tight_layout()
+                        st.pyplot(fig)
+                        plt.close()
+                        
+                        # Alertes vent fort
+                        wind_vals = pd.to_numeric(df_h["wind_speed_10m"], errors="coerce")
+                        strong_wind = wind_vals[wind_vals >= 40]
+                        if len(strong_wind) > 0:
+                            st.warning(f"⚠️ Vent fort détecté : {len(strong_wind)} heures avec vent ≥ 40 km/h")
+                
+                # Pression atmosphérique
+                st.markdown("### 🌡️ Pression atmosphérique")
+                current = weather_data.get("current", {})
+                press_msl = current.get("pressure_msl")
+                press_surf = current.get("surface_pressure")
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    if press_msl:
+                        st.metric("Pression niveau mer", f"{press_msl:.1f} hPa")
+                        if press_msl < 1000:
+                            st.info("📉 Basse pression → Temps instable probable")
+                        elif press_msl > 1020:
+                            st.success("📈 Haute pression → Temps stable")
+                        else:
+                            st.info("➡️ Pression normale")
+                
+                with col2:
+                    if press_surf:
+                        st.metric("Pression surface", f"{press_surf:.1f} hPa")
+
+    # --- ONGLET 5: PRÉCIPITATIONS & HUMIDITÉ ---
+    with tab_precip:
+        st.subheader("💧 Précipitations & Humidité")
+        weather_data = st.session_state.get("weather_data")
+        
+        if not weather_data:
+            st.info("Aucune donnée disponible.")
+        else:
+            daily_list = weather_data.get("daily", [])
+            hourly_list = weather_data.get("hourly", [])
+            
+            # Accumulation de pluie
+            st.markdown("### 🌧️ Accumulation de pluie")
+            if daily_list:
+                df_d = _safe_df(daily_list).copy()
+                if "precipitation_sum" in df_d:
+                    precip_vals = pd.to_numeric(df_d["precipitation_sum"], errors="coerce")
+                    
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("24h", f"{precip_vals.iloc[0]:.1f} mm" if len(precip_vals) > 0 else "N/A")
+                    with col2:
+                        st.metric("48h", f"{precip_vals.iloc[:2].sum():.1f} mm" if len(precip_vals) >= 2 else "N/A")
+                    with col3:
+                        st.metric("7 jours", f"{precip_vals.sum():.1f} mm")
+            
+            # Timeline pluie
+            if hourly_list and len(hourly_list) > 0:
+                st.markdown("### ⏰ Timeline des précipitations (24h)")
+                df_h = _safe_df(hourly_list[:24]).copy()
+                
+                if "date" in df_h and "precipitation_probability" in df_h:
+                    df_h["Heure"] = pd.to_datetime(df_h["date"]).dt.strftime("%Hh")
+                    df_h["Proba"] = pd.to_numeric(df_h["precipitation_probability"], errors="coerce")
+                    
+                    fig, ax = plt.subplots(figsize=(12, 3))
+                    
+                    # Barres horizontales avec gradient de couleur
+                    colors = plt.cm.Blues(df_h["Proba"] / 100)
+                    ax.barh(0, 1, left=range(len(df_h)), height=0.8, color=colors, edgecolor='none')
+                    
+                    # Seuil 50%
+                    rain_hours = df_h[df_h["Proba"] >= 50]
+                    if len(rain_hours) > 0:
+                        for idx in rain_hours.index:
+                            ax.axvline(x=idx, color='red', alpha=0.3, linestyle='--')
+                    
+                    ax.set_xlim(-0.5, len(df_h)-0.5)
+                    ax.set_xticks(range(len(df_h)))
+                    ax.set_xticklabels(df_h["Heure"], rotation=45, ha='right')
+                    ax.set_yticks([])
+                    ax.set_xlabel('Heure')
+                    ax.set_title('Probabilité de pluie (Bleu foncé = haute probabilité)')
+                    ax.grid(axis='x', alpha=0.3)
+                    
+                    plt.tight_layout()
+                    st.pyplot(fig)
+                    plt.close()
+                    
+                    # Identifier les périodes de pluie
+                    rain_periods = df_h[df_h["Proba"] >= 50]
+                    if len(rain_periods) > 0:
+                        debut = rain_periods.iloc[0]["Heure"]
+                        fin = rain_periods.iloc[-1]["Heure"]
+                        st.warning(f"🌧️ Pluie probable de **{debut}** à **{fin}**")
+                    else:
+                        st.success("☀️ Pas de pluie significative prévue dans les 24h")
+                
+                # Humidité
+                st.markdown("### 💦 Humidité relative (24h)")
+                if "relative_humidity_2m" in df_h:
+                    df_h["Humidité"] = pd.to_numeric(df_h["relative_humidity_2m"], errors="coerce")
+                    
+                    fig, ax = plt.subplots(figsize=(10, 4))
+                    ax.fill_between(range(len(df_h)), df_h["Humidité"], alpha=0.3, color='cyan')
+                    ax.plot(df_h["Humidité"], marker='o', color='darkblue')
+                    ax.axhline(y=70, color='orange', linestyle='--', alpha=0.5, label='Seuil humide (70%)')
+                    ax.set_xlabel('Heure')
+                    ax.set_ylabel('Humidité (%)')
+                    ax.set_title('Évolution de l\'humidité')
+                    ax.set_xticks(range(len(df_h)))
+                    ax.set_xticklabels(df_h["Heure"], rotation=45)
+                    ax.legend()
+                    ax.grid(alpha=0.3)
+                    plt.tight_layout()
+                    st.pyplot(fig)
+                    plt.close()
+                
+                # Risque d'orage
+                st.markdown("### ⛈️ Risque d'orage")
+                if "weather_code" in df_h:
+                    storm_codes = [95, 96, 99]  # Codes orage
+                    df_h["code"] = pd.to_numeric(df_h["weather_code"], errors="coerce")
+                    storm_hours = df_h[df_h["code"].isin(storm_codes)]
+                    
+                    if len(storm_hours) > 0:
+                        st.error(f"⚠️ Risque d'orage détecté : {len(storm_hours)} heures concernées")
+                        for _, row in storm_hours.iterrows():
+                            st.write(f"- {row['Heure']}")
+                    else:
+                        st.success("✅ Pas de risque d'orage dans les 24h")
+
+    # --- ONGLET 6: ENSOLEILLEMENT & UV ---
+    with tab_soleil:
+        st.subheader("☀️ Ensoleillement & UV")
+        weather_data = st.session_state.get("weather_data")
+        
+        if not weather_data:
+            st.info("Aucune donnée disponible.")
+        else:
+            daily_list = weather_data.get("daily", [])
+            hourly_list = weather_data.get("hourly", [])
+            
+            # Calendrier solaire 7 jours
+            if daily_list:
+                st.markdown("### 🌅 Calendrier solaire (7 jours)")
+                df_d = _safe_df(daily_list[:7]).copy()
+                
+                if "date" in df_d:
+                    df_d["Jour"] = pd.to_datetime(df_d["date"]).dt.strftime("%a %d")
+                    
+                    display_cols = ["Jour"]
+                    if "sunrise" in df_d:
+                        df_d["Lever"] = pd.to_datetime(df_d["sunrise"]).dt.strftime("%H:%M")
+                        display_cols.append("Lever")
+                    if "sunset" in df_d:
+                        df_d["Coucher"] = pd.to_datetime(df_d["sunset"]).dt.strftime("%H:%M")
+                        display_cols.append("Coucher")
+                    if "daylight_duration" in df_d:
+                        df_d["Durée jour"] = df_d["daylight_duration"].apply(_sec_to_hm)
+                        display_cols.append("Durée jour")
+                    if "sunshine_duration" in df_d:
+                        df_d["Ensoleillement"] = df_d["sunshine_duration"].apply(_sec_to_hm)
+                        display_cols.append("Ensoleillement")
+                    
+                    st.dataframe(df_d[display_cols], use_container_width=True, hide_index=True)
+                    
+                    # Évolution durée du jour
+                    if "daylight_duration" in df_d:
+                        st.markdown("### 📈 Évolution de la durée du jour")
+                        fig, ax = plt.subplots(figsize=(10, 4))
+                        
+                        durations_hours = pd.to_numeric(df_d["daylight_duration"], errors="coerce") / 3600
+                        ax.plot(df_d["Jour"], durations_hours, marker='o', color='gold', linewidth=2)
+                        ax.fill_between(range(len(df_d)), durations_hours, alpha=0.3, color='yellow')
+                        ax.set_xlabel('Jour')
+                        ax.set_ylabel('Durée (heures)')
+                        ax.set_title('Durée d\'ensoleillement théorique')
+                        ax.grid(alpha=0.3)
+                        plt.xticks(rotation=45)
+                        plt.tight_layout()
+                        st.pyplot(fig)
+                        plt.close()
+            
+            # Protection UV
+            if hourly_list:
+                st.markdown("### 🕶️ Protection UV recommandée")
+                df_h = _safe_df(hourly_list[:24]).copy()
+                
+                if "date" in df_h and "uv_index" in df_h:
+                    df_h["Heure"] = pd.to_datetime(df_h["date"]).dt.strftime("%Hh")
+                    df_h["UV"] = pd.to_numeric(df_h["uv_index"], errors="coerce")
+                    
+                    # Graphique UV
+                    fig, ax = plt.subplots(figsize=(10, 4))
+                    
+                    colors = []
+                    for uv in df_h["UV"]:
+                        if pd.isna(uv): colors.append('gray')
+                        elif uv < 3: colors.append('green')
+                        elif uv < 6: colors.append('yellow')
+                        elif uv < 8: colors.append('orange')
+                        elif uv < 11: colors.append('red')
+                        else: colors.append('purple')
+                    
+                    ax.bar(range(len(df_h)), df_h["UV"], color=colors, alpha=0.7)
+                    ax.set_xlabel('Heure')
+                    ax.set_ylabel('Indice UV')
+                    ax.set_title('Indice UV sur 24h (Vert=Faible, Jaune=Modéré, Orange=Élevé, Rouge=Très élevé)')
+                    ax.set_xticks(range(len(df_h)))
+                    ax.set_xticklabels(df_h["Heure"], rotation=45)
+                    ax.grid(axis='y', alpha=0.3)
+                    
+                    # Légende
+                    from matplotlib.patches import Patch
+                    legend_elements = [
+                        Patch(facecolor='green', label='Faible (0-3)'),
+                        Patch(facecolor='yellow', label='Modéré (3-6)'),
+                        Patch(facecolor='orange', label='Élevé (6-8)'),
+                        Patch(facecolor='red', label='Très élevé (8-11)'),
+                        Patch(facecolor='purple', label='Extrême (11+)')
+                    ]
+                    ax.legend(handles=legend_elements, loc='upper left', fontsize=8)
+                    
+                    plt.tight_layout()
+                    st.pyplot(fig)
+                    plt.close()
+                    
+                    # Recommandations par tranche
+                    high_uv = df_h[df_h["UV"] >= 6]
+                    if len(high_uv) > 0:
+                        st.warning("⚠️ **Protection recommandée :**")
+                        st.write("- 🕶️ Lunettes de soleil")
+                        st.write("- 🧴 Crème solaire SPF 30+")
+                        st.write("- 🧢 Chapeau ou casquette")
+                        st.write(f"- ⏰ Heures à risque : {high_uv.iloc[0]['Heure']} - {high_uv.iloc[-1]['Heure']}")
+
+    # --- ONGLET 7: CONFORT & RESSENTIS ---
+    with tab_confort:
+        st.subheader("🌡️ Confort & Ressentis")
+        weather_data = st.session_state.get("weather_data")
+        
+        if not weather_data:
+            st.info("Aucune donnée disponible.")
+        else:
+            current = weather_data.get("current", {})
+            hourly_list = weather_data.get("hourly", [])
+            
+            # Indices actuels
+            st.markdown("### 🎯 Indices de confort actuels")
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                temp = current.get("temperature_2m", 0)
+                felt = current.get("apparent_temperature", 0)
+                st.metric("Température réelle", f"{temp:.1f} °C")
+                st.metric("Température ressentie", f"{felt:.1f} °C", delta=f"{felt-temp:.1f}°C")
+            
+            with col2:
+                hum = current.get("relative_humidity_2m", 0)
+                st.metric("Humidité", f"{hum:.0f} %")
+                
+                # Point de rosée (approximation)
+                if temp and hum:
+                    dew_point = temp - ((100 - hum) / 5)
+                    st.metric("Point de rosée", f"{dew_point:.1f} °C")
+            
+            with col3:
+                # Indice de chaleur (Heat Index) - formule simplifiée
+                if temp > 27 and hum > 40:
+                    heat_index = -8.78 + 1.61*temp + 2.34*hum - 0.14*temp*hum
+                    st.metric("Indice de chaleur", f"{heat_index:.1f} °C")
+                    if heat_index > 40:
+                        st.error("🔥 Chaleur extrême !")
+                    elif heat_index > 32:
+                        st.warning("⚠️ Inconfort thermique")
+                else:
+                    st.info("Indice de chaleur non applicable")
+            
+            # Zone de confort
+            st.markdown("### 😊 Zone de confort thermique")
+            st.info("""
+            **Zone de confort optimal : 18-24°C**
+            - En dessous de 18°C : Sensation de froid
+            - 18-24°C : Zone de confort
+            - Au dessus de 24°C : Sensation de chaleur
+            """)
+            
+            if hourly_list:
+                df_h = _safe_df(hourly_list[:24]).copy()
+                
+                if "date" in df_h and "temperature_2m" in df_h and "apparent_temperature" in df_h:
+                    df_h["Heure"] = pd.to_datetime(df_h["date"]).dt.strftime("%Hh")
+                    df_h["Temp"] = pd.to_numeric(df_h["temperature_2m"], errors="coerce")
+                    df_h["Ressenti"] = pd.to_numeric(df_h["apparent_temperature"], errors="coerce")
+                    
+                    # Graphique température vs ressenti
+                    fig, ax = plt.subplots(figsize=(10, 5))
+                    
+                    ax.plot(df_h["Heure"], df_h["Temp"], label='Température réelle', 
+                           marker='o', color='steelblue', linewidth=2)
+                    ax.plot(df_h["Heure"], df_h["Ressenti"], label='Température ressentie', 
+                           marker='s', color='coral', linewidth=2, linestyle='--')
+                    
+                    # Zone de confort
+                    ax.axhspan(18, 24, alpha=0.2, color='green', label='Zone de confort')
+                    
+                    ax.set_xlabel('Heure')
+                    ax.set_ylabel('Température (°C)')
+                    ax.set_title('Température réelle vs. ressentie avec zone de confort')
+                    ax.legend(loc='best')
+                    ax.grid(alpha=0.3)
+                    plt.xticks(rotation=45)
+                    plt.tight_layout()
+                    st.pyplot(fig)
+                    plt.close()
+                    
+                    # Recommandations vestimentaires
+                    st.markdown("### 👕 Recommandations vestimentaires")
+                    avg_temp = df_h["Temp"].mean()
+                    
+                    if avg_temp < 5:
+                        st.info("🧥 **Vêtements chauds recommandés :** Manteau épais, écharpe, gants, bonnet")
+                    elif avg_temp < 15:
+                        st.info("🧥 **Vêtements mi-saison :** Veste, pull léger")
+                    elif avg_temp < 25:
+                        st.success("👕 **Vêtements légers :** T-shirt, pantalon léger")
+                    else:
+                        st.warning("🩳 **Vêtements très légers :** Short, débardeur, pensez à l'hydratation")
+
+    # --- ONGLET 8: JOUR VS NUIT ---
+    with tab_jour_nuit:
+        st.subheader("🌙 Jour vs Nuit")
+        weather_data = st.session_state.get("weather_data")
+        
+        if not weather_data:
+            st.info("Aucune donnée disponible.")
+        else:
+            hourly_list = weather_data.get("hourly", [])
+            daily_list = weather_data.get("daily", [])
+            
+            if hourly_list and daily_list:
+                df_h = _safe_df(hourly_list[:24]).copy()
+                
+                if "date" in df_h and "temperature_2m" in df_h:
+                    df_h["datetime"] = pd.to_datetime(df_h["date"])
+                    df_h["Temp"] = pd.to_numeric(df_h["temperature_2m"], errors="coerce")
+                    
+                    # Identifier jour/nuit
+                    if "is_day" in df_h:
+                        df_h["is_day"] = pd.to_numeric(df_h["is_day"], errors="coerce")
+                        day_data = df_h[df_h["is_day"] == 1]
+                        night_data = df_h[df_h["is_day"] == 0]
+                    else:
+                        # Approximation si pas de is_day
+                        df_h["hour"] = df_h["datetime"].dt.hour
+                        day_data = df_h[(df_h["hour"] >= 6) & (df_h["hour"] < 20)]
+                        night_data = df_h[(df_h["hour"] < 6) | (df_h["hour"] >= 20)]
+                    
+                    # Comparaison
+                    st.markdown("### ☀️🌙 Comparaison Jour vs Nuit")
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.markdown("#### ☀️ Jour")
+                        if len(day_data) > 0:
+                            st.metric("Température moyenne", f"{day_data['Temp'].mean():.1f} °C")
+                            st.metric("Température max", f"{day_data['Temp'].max():.1f} °C")
+                            st.metric("Température min", f"{day_data['Temp'].min():.1f} °C")
+                    
+                    with col2:
+                        st.markdown("#### 🌙 Nuit")
+                        if len(night_data) > 0:
+                            st.metric("Température moyenne", f"{night_data['Temp'].mean():.1f} °C")
+                            st.metric("Température max", f"{night_data['Temp'].max():.1f} °C")
+                            st.metric("Température min", f"{night_data['Temp'].min():.1f} °C")
+                    
+                    # Amplitude thermique
+                    if len(day_data) > 0 and len(night_data) > 0:
+                        amplitude = day_data['Temp'].mean() - night_data['Temp'].mean()
+                        st.info(f"📊 **Amplitude thermique jour/nuit :** {amplitude:.1f} °C")
+                    
+                    # Heatmap 7 jours
+                    st.markdown("### 🔥 Heatmap température (7 jours x 24h)")
+                    df_week = _safe_df(hourly_list[:168]).copy()  # 7 jours * 24h
+                    
+                    if "date" in df_week and "temperature_2m" in df_week:
+                        df_week["datetime"] = pd.to_datetime(df_week["date"])
+                        df_week["Jour"] = df_week["datetime"].dt.strftime("%a %d")
+                        df_week["Heure"] = df_week["datetime"].dt.hour
+                        df_week["Temp"] = pd.to_numeric(df_week["temperature_2m"], errors="coerce")
+                        
+                        # Pivot pour heatmap
+                        pivot = df_week.pivot_table(values="Temp", index="Jour", columns="Heure", aggfunc='mean')
+                        
+                        fig, ax = plt.subplots(figsize=(12, 6))
+                        im = ax.imshow(pivot, cmap='RdYlBu_r', aspect='auto')
+                        
+                        ax.set_xticks(range(24))
+                        ax.set_xticklabels([f"{h}h" for h in range(24)])
+                        ax.set_yticks(range(len(pivot.index)))
+                        ax.set_yticklabels(pivot.index)
+                        ax.set_xlabel('Heure')
+                        ax.set_ylabel('Jour')
+                        ax.set_title('Heatmap des températures (Rouge=Chaud, Bleu=Froid)')
+                        
+                        cbar = plt.colorbar(im, ax=ax)
+                        cbar.set_label('Température (°C)', rotation=270, labelpad=20)
+                        
+                        plt.tight_layout()
+                        st.pyplot(fig)
+                        plt.close()
+                    
+                    # Qualité du sommeil
+                    st.markdown("### 😴 Température et qualité du sommeil")
+                    st.info("""
+                    **Température idéale pour dormir : 16-19°C**
+                    
+                    Une chambre trop chaude ou trop froide perturbe le sommeil.
+                    """)
+                    
+                    if len(night_data) > 0:
+                        night_avg = night_data['Temp'].mean()
+                        if 16 <= night_avg <= 19:
+                            st.success(f"✅ Température nocturne optimale : {night_avg:.1f}°C")
+                        elif night_avg < 16:
+                            st.warning(f"❄️ Température nocturne basse : {night_avg:.1f}°C - Pensez à une couverture supplémentaire")
+                        else:
+                            st.warning(f"🔥 Température nocturne élevée : {night_avg:.1f}°C - Aérez ou utilisez la climatisation")
+
+    # --- ONGLET 9: RECOMMANDATIONS ---
+    with tab_reco:
+        st.subheader("🎯 Recommandations & Activités")
+        weather_data = st.session_state.get("weather_data")
+        
+        if not weather_data:
+            st.info("Aucune donnée disponible.")
+        else:
+            daily_list = weather_data.get("daily", [])
+            hourly_list = weather_data.get("hourly", [])
+            current = weather_data.get("current", {})
+            
+            # Analyser les conditions
+            temp = current.get("temperature_2m", 20)
+            rain_prob = 0
+            uv = 0
+            wind = current.get("wind_speed_10m", 0)
+            
+            if hourly_list:
+                df_h = _safe_df(hourly_list[:24])
+                if "precipitation_probability" in df_h:
+                    rain_prob = pd.to_numeric(df_h["precipitation_probability"], errors="coerce").max()
+                if "uv_index" in df_h:
+                    uv = pd.to_numeric(df_h["uv_index"], errors="coerce").max()
+            
+            # Activités recommandées
+            st.markdown("### 🏃 Activités sportives recommandées")
+            
+            activities = []
+            
+            # Conditions parfaites
+            if temp > 15 and temp < 28 and rain_prob < 30 and wind < 30:
+                activities.append(("🚴", "Vélo", "Conditions idéales"))
+                activities.append(("🏃", "Course à pied", "Parfait pour courir"))
+                activities.append(("🧘", "Yoga en extérieur", "Profitez du beau temps"))
+            
+            # Pluie
+            if rain_prob > 50:
+                activities.append(("🏊", "Piscine couverte", "Il pleut dehors"))
+                activities.append(("🏋️", "Salle de sport", "Restez au sec"))
+                activities.append(("🎳", "Bowling", "Activité indoor"))
+            
+            # Chaleur
+            if temp > 28:
+                activities.append(("🏊", "Baignade", "Rafraîchissez-vous"))
+                activities.append(("🚶", "Balade tôt le matin", "Évitez les heures chaudes"))
+            
+            # Froid
+            if temp < 10:
+                activities.append(("⛷️", "Sports d'hiver", "Profitez du froid"))
+                activities.append(("🏃", "Jogging matinal", "Habillez-vous chaudement"))
+            
+            # Vent
+            if wind > 30:
+                activities.append(("🪁", "Cerf-volant", "Vent favorable"))
+                activities.append(("⛵", "Voile", "Conditions venteuses"))
+            
+            if activities:
+                for emoji, activity, desc in activities:
+                    st.success(f"{emoji} **{activity}** : {desc}")
+            else:
+                st.info("Consultez les détails météo pour choisir votre activité")
+            
+            # Jardinage
+            st.markdown("### 🌱 Jardinage")
+            if rain_prob < 20 and daily_list:
+                df_d = _safe_df(daily_list[:3])
+                if "precipitation_sum" in df_d:
+                    total_rain = pd.to_numeric(df_d["precipitation_sum"], errors="coerce").sum()
+                    if total_rain < 5:
+                        st.warning("💧 Pensez à arroser : Peu de pluie prévue dans les 3 prochains jours")
+                    if uv > 6:
+                        st.info("🌿 Bon moment pour planter (attention au soleil)")
+            
+            # Entretien voiture
+            st.markdown("### 🚗 Entretien véhicule")
+            if daily_list:
+                df_d = _safe_df(daily_list[:2])
+                if "precipitation_probability_max" in df_d:
+                    max_rain = pd.to_numeric(df_d["precipitation_probability_max"], errors="coerce").max()
+                    if max_rain < 20:
+                        st.success("🚗 Bon moment pour laver la voiture (pas de pluie prévue)")
+            
+            # Linge
+            st.markdown("### 👕 Séchage du linge")
+            if rain_prob < 30 and wind > 10 and temp > 15:
+                st.success("👔 Excellentes conditions pour sécher le linge dehors !")
+            elif rain_prob > 50:
+                st.warning("🌧️ Privilégiez le séchage en intérieur")
+            
+            # Sorties & loisirs
+            st.markdown("### 🎭 Sorties & Loisirs")
+            if rain_prob < 30 and temp > 18 and temp < 30:
+                st.success("🏞️ **Pique-nique** : Conditions parfaites !")
+                st.success("🚶 **Randonnée** : Excellente journée pour marcher")
+                st.success("📸 **Photographie extérieure** : Belle lumière")
+            elif rain_prob > 50:
+                st.info("🎬 **Cinéma** : Bon moment pour un film")
+                st.info("🏛️ **Musées** : Visitez en intérieur")
+                st.info("☕ **Café/Restaurant** : Profitez d'un moment cosy")
+            
+            # Synthèse
+            st.markdown("### 📋 Synthèse de la journée")
+            if rain_prob < 20 and 18 < temp < 26 and uv < 8:
+                st.success("✨ **Journée idéale !** Profitez-en pour toutes vos activités extérieures.")
+            elif rain_prob > 70:
+                st.warning("☔ **Journée pluvieuse.** Prévoyez des activités en intérieur ou un parapluie.")
+            elif temp > 30:
+                st.warning("🔥 **Journée chaude.** Hydratez-vous et évitez le soleil entre 12h et 16h.")
+            elif temp < 5:
+                st.info("❄️ **Journée froide.** Couvrez-vous bien pour sortir.")
+            else:
+                st.info("🌤️ **Journée normale.** Adaptez vos activités selon vos préférences.")
 
     # Footer
     st.markdown("---")

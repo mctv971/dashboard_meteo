@@ -70,14 +70,17 @@ def geocode_city(city_name):
 # ------------------------
 # PAGE ACCUEIL MODERNE
 # ------------------------
-st.markdown('<h1 class="animate-fade-in">🌤️ Dashboard Météo Professionnel</h1>', unsafe_allow_html=True)
+st.markdown('<h1 class="animate-fade-in">🌤️ Dashboard Météo</h1>', unsafe_allow_html=True)
 st.markdown('<p style="font-size: 1.2rem; opacity: 0.8; text-align: center;">Explorez les données météorologiques en temps réel avec un design moderne et intuitif</p>', unsafe_allow_html=True)
 st.markdown("---")
 
 # 🔍 Recherche principale avec style amélioré
-st.markdown('<div class="weather-card animate-fade-in">', unsafe_allow_html=True)
-st.markdown("## 🔎 Rechercher une ville")
-st.markdown('<p style="opacity: 0.8;">Entrez le nom d\'une ville pour obtenir les prévisions météorologiques détaillées</p>', unsafe_allow_html=True)
+st.markdown("""
+<div class="weather-card animate-fade-in">
+    <h2>🔎 Rechercher une ville</h2>
+    <p style="opacity: 0.8;">Entrez le nom d'une ville pour obtenir les prévisions détaillées</p>
+</div>
+""", unsafe_allow_html=True)
 
 ville_input = st.text_input(
     "Rechercher une ville",
@@ -85,7 +88,6 @@ ville_input = st.text_input(
     label_visibility="collapsed",
     key="city_search"
 )
-st.markdown('</div>', unsafe_allow_html=True)
 
 latitude = None
 longitude = None
@@ -115,6 +117,8 @@ if ville_input:
         st.switch_page("pages/1_Données météo.py")
     else:
         st.error("❌ Impossible de trouver cette ville. Vérifiez l'orthographe.")
+
+st.markdown('</div>', unsafe_allow_html=True)
 
 
 # --------------------------------------------------------

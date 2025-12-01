@@ -302,29 +302,7 @@ def tool_search_web(query: str) -> Dict[str, Any]:
         return {"ok": False, "message": f"Erreur de recherche: {str(e)}"}
 
 
-class WikiLookupArgs(BaseModel):
-    topic: str = Field(..., description="Sujet à rechercher sur Wikipedia")
 
-
-@tool("wiki_lookup", args_schema=WikiLookupArgs)
-def tool_wiki_lookup(topic: str) -> Dict[str, Any]:
-    """
-    Utilise cet outil pour rechercher des informations sur des articles liés à la ville, ca peut être des monuments, histoire, culture, etc.
-    Recherche un sujet sur Wikipedia et retourne un résumé concis.
-    """
-    try:
-        retriever = WikipediaRetriever()
-        docs = retriever.get_relevant_documents(topic)
-        if not docs:
-            return {"ok": False, "message": f"Aucun résultat Wikipedia pour '{topic}'"}
-        
-        summary = docs[0].page_content[:500] if docs else "Aucun contenu trouvé."  # Limite à 500 caractères
-        return {
-            "ok": True,
-            "summary": summary
-        }
-    except Exception as e:
-        return {"ok": False, "message": f"Erreur Wikipedia: {str(e)}"}
 
 def build_agent():
     """Create a LangChain/LangGraph agent wired with our tools and a Groq LLM."""
@@ -341,7 +319,7 @@ def build_agent():
         groq_api_key=api_key,
     )
 
-    tools = [tool_get_weather, tool_get_saints, tool_get_horoscope, tool_get_blague, tool_search_web, tool_wiki_lookup]
+    tools = [tool_get_weather, tool_get_saints, tool_get_horoscope, tool_get_blague, tool_search_web]
 
     system_prompt = (
         "Tu es MeteoBot, un assistant météo francophone intelligent et informatif. "
